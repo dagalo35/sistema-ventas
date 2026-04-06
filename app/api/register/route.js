@@ -1,8 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 
+// ✅ USAR SERVICE ROLE (SERVER ONLY)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
 export async function POST(req) {
@@ -22,20 +23,20 @@ export async function POST(req) {
       email,
       celular,
       password,
-      sponsor // 🔥 código del patrocinador
+      sponsor
     } = body
 
-    // 🔹 1. VALIDAR SPONSOR (si existe)
+    // 🔹 1. VALIDAR SPONSOR
     let sponsorCodigo = null
 
     if (sponsor) {
-      const { data: sponsorUser } = await supabase
+      const { data: sponsorUser, error: sponsorError } = await supabase
         .from('users')
         .select('codigo')
         .eq('codigo', sponsor)
-        .single()
+        .maybeSingle()
 
-      if (!sponsorUser) {
+      if (sponsorError || !sponsorUser) {
         return Response.json({
           error: 'Código de patrocinador inválido'
         })
@@ -44,27 +45,31 @@ export async function POST(req) {
       sponsorCodigo = sponsorUser.codigo
     }
 
-    // 🔹 2. GENERAR NUEVO CÓDIGO (GHC-XXX)
-    const { count } = await supabase
+    // 🔹 2. GENERAR NUEVO CÓDIGO
+    const { count, error: countError } = await supabase
       .from('users')
       .select('*', { count: 'exact', head: true })
 
-    const nuevoNumero = (count || 0) + 1
-
-    const codigoGenerado = `GHC-${String(nuevoNumero).padStart(3, '0')}`
-
-    // 🔹 3. CREAR USUARIO AUTH
-    const { data, error } = await supabase.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true
-    })
-
-    if (error) {
-      return Response.json({ error: error.message })
+    if (countError) {
+      return Response.json({ error: countError.message })
     }
 
-    const user = data.user
+    const nuevoNumero = (count || 0) + 1
+    const codigoGenerado = `GHC-${String(nuevoNumero).padStart(3, '0')}`
+
+    // 🔹 3. CREAR USUARIO EN AUTH (ADMIN)
+    const { data: authData, error: authError } =
+      await supabase.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true
+      })
+
+    if (authError) {
+      return Response.json({ error: authError.message })
+    }
+
+    const user = authData.user
 
     // 🔹 4. INSERTAR EN TABLA users
     const { error: dbError } = await supabase
@@ -82,12 +87,10 @@ export async function POST(req) {
         distrito,
         email,
         celular,
-        password,
 
-        // 🔥 CLAVE DEL SISTEMA
+        // 🔥 NO guardar password (ya lo maneja Supabase Auth)
         codigo: codigoGenerado,
         referido_por: sponsorCodigo,
-
         activo: true
       })
 
@@ -101,6 +104,8 @@ export async function POST(req) {
     })
 
   } catch (err) {
+    console.error('ERROR REGISTER:', err)
+
     return Response.json({
       error: 'Error del servidor'
     })
