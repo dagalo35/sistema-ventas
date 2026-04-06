@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 
 // 🔥 evita prerender en build (MUY IMPORTANTE)
 export const dynamic = "force-dynamic"
+export const revalidate = 0
 
 export default function Register() {
   const router = useRouter()
