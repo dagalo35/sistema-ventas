@@ -1,10 +1,12 @@
 "use client"
 
+export const dynamic = "force-dynamic"
+export const fetchCache = "force-no-store"
+export const revalidate = 0
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
 // 🔥 evita prerender en Vercel (CLAVE)
-export const dynamic = "force-dynamic"
 
 export default function Register() {
   const router = useRouter()
