@@ -21,17 +21,11 @@ export async function POST(req) {
       return Response.json({ error: 'Pedido no encontrado' }, { status: 404 })
     }
 
-    // 🔥 VALIDACIONES PRO
-    if (pedido.estado === 'aprobado') {
-      return Response.json({ error: 'Ya fue aprobado' }, { status: 400 })
-    }
-
-    if (pedido.estado === 'cancelado') {
-      return Response.json({ error: 'Pedido cancelado por el usuario' }, { status: 400 })
-    }
-
-    if (pedido.estado === 'rechazado') {
-      return Response.json({ error: 'Pedido ya fue rechazado' }, { status: 400 })
+    // 🔒 VALIDAR ESTADO
+    if (pedido.estado !== 'pendiente') {
+      return Response.json({
+        error: `El pedido ya está ${pedido.estado}`
+      }, { status: 400 })
     }
 
     // =========================
@@ -74,15 +68,17 @@ export async function POST(req) {
     // 🔹 5. ACTIVAR USUARIO
     // =========================
     if (activo) {
+      const ahora = new Date()
+
       await supabase
         .from('users')
         .update({
           activo_comisiones: true,
-          ultimo_pago: new Date()
+          ultimo_pago: ahora
         })
         .eq('supabase_id', user.supabase_id)
 
-      user.ultimo_pago = new Date()
+      user.ultimo_pago = ahora
     }
 
     // =========================
@@ -104,15 +100,17 @@ export async function POST(req) {
     // =========================
     async function insertarComision(userSupabaseId, fromUser, monto, tipo, nivel, pedidoId) {
 
+      if (!userSupabaseId || monto <= 0) return
+
       const { data: existe } = await supabase
         .from('comisiones')
         .select('id')
         .eq('pedido_id', pedidoId)
         .eq('user_id', userSupabaseId)
         .eq('nivel', nivel)
-        .limit(1)
+        .maybeSingle()
 
-      if (existe?.length > 0) {
+      if (existe) {
         console.log("⚠️ Comisión duplicada evitada")
         return
       }
@@ -173,13 +171,14 @@ export async function POST(req) {
     // =========================
     // 🔹 RED
     // =========================
-    if (user.referido_por && user.referido_por !== user.supabase_id) {
+    if (user.referido_por) {
 
+      // 🔹 NIVEL 1
       const { data: nivel1 } = await supabase
         .from('users')
         .select('*')
         .eq('codigo', user.referido_por)
-        .single()
+        .maybeSingle()
 
       if (nivel1 && estaActivo(nivel1)) {
         await insertarComision(
@@ -192,12 +191,13 @@ export async function POST(req) {
         )
       }
 
+      // 🔹 NIVEL 2
       if (nivel1?.referido_por) {
         const { data: nivel2 } = await supabase
           .from('users')
           .select('*')
           .eq('codigo', nivel1.referido_por)
-          .single()
+          .maybeSingle()
 
         if (nivel2 && estaActivo(nivel2)) {
           await insertarComision(
@@ -210,12 +210,13 @@ export async function POST(req) {
           )
         }
 
+        // 🔹 NIVEL 3
         if (nivel2?.referido_por) {
           const { data: nivel3 } = await supabase
             .from('users')
             .select('*')
             .eq('codigo', nivel2.referido_por)
-            .single()
+            .maybeSingle()
 
           if (nivel3 && estaActivo(nivel3)) {
             await insertarComision(
@@ -232,11 +233,14 @@ export async function POST(req) {
     }
 
     return Response.json({
-      message: '✅ Pedido aprobado correctamente. Comisiones distribuidas.'
+      message: '✅ Pedido aprobado y comisiones generadas correctamente'
     })
 
   } catch (err) {
     console.error("🔥 ERROR GENERAL:", err)
-    return Response.json({ error: 'Error del servidor' }, { status: 500 })
+
+    return Response.json({
+      error: 'Error del servidor'
+    }, { status: 500 })
   }
 }
