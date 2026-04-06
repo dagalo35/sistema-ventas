@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
+// 🔥 evita prerender en build (MUY IMPORTANTE)
+export const dynamic = "force-dynamic"
+
 export default function Register() {
   const router = useRouter()
   const searchParams = useSearchParams()
-
-  // 🔥 capturar referido desde URL
-  const ref = searchParams.get('ref')
 
   const [form, setForm] = useState({
     nombre: '',
@@ -26,15 +26,17 @@ export default function Register() {
     sponsor: ''
   })
 
-  // 🔥 auto llenar sponsor si viene del link
+  // 🔥 capturar referido correctamente
   useEffect(() => {
+    const ref = searchParams.get('ref')
+
     if (ref) {
       setForm(prev => ({
         ...prev,
         sponsor: ref
       }))
     }
-  }, [ref])
+  }, [searchParams])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -62,7 +64,6 @@ export default function Register() {
         <p style={styles.subtitle}>GHC INTERNATIONAL S.A.C.</p>
 
         <form onSubmit={handleSubmit}>
-
           <div style={styles.grid}>
 
             <input placeholder="Nombres"
