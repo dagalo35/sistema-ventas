@@ -1,15 +1,13 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 
-// 🔥 evita prerender en build (MUY IMPORTANTE)
+// 🔥 evita prerender en Vercel (CLAVE)
 export const dynamic = "force-dynamic"
-export const revalidate = 0
 
 export default function Register() {
   const router = useRouter()
-  const searchParams = useSearchParams()
 
   const [form, setForm] = useState({
     nombre: '',
@@ -27,17 +25,20 @@ export default function Register() {
     sponsor: ''
   })
 
-  // 🔥 capturar referido correctamente
+  // 🔥 obtener ref SOLO en cliente (sin romper build)
   useEffect(() => {
-    const ref = searchParams.get('ref')
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search)
+      const ref = params.get("ref")
 
-    if (ref) {
-      setForm(prev => ({
-        ...prev,
-        sponsor: ref
-      }))
+      if (ref) {
+        setForm(prev => ({
+          ...prev,
+          sponsor: ref
+        }))
+      }
     }
-  }, [searchParams])
+  }, [])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -129,7 +130,6 @@ export default function Register() {
             onChange={e => setForm({...form, referencia: e.target.value})}
           />
 
-          {/* 🔥 sponsor automático */}
           <input
             value={form.sponsor}
             placeholder="Código de patrocinador"
