@@ -59,10 +59,9 @@ export async function POST(req) {
 
     // 🔹 3. CREAR USUARIO EN AUTH (ADMIN)
     const { data: authData, error: authError } =
-      await supabase.auth.admin.createUser({
+      await supabase.auth.signUp({
         email,
         password,
-        email_confirm: true
       })
 
     if (authError) {
