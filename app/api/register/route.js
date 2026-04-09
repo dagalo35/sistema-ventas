@@ -63,6 +63,8 @@ export async function POST(req) {
         email,
         password,
       })
+    console.log("AUTH DATA:", authData)
+    console.log("AUTH ERROR:", authError)
 
     if (authError) {
       return Response.json({ error: authError.message })
