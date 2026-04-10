@@ -2,13 +2,15 @@
 
 export const dynamic = "force-dynamic"
 export const fetchCache = "force-no-store"
+
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
-// 🔥 evita prerender en Vercel (CLAVE)
-
 export default function Register() {
   const router = useRouter()
+
+  const [loading, setLoading] = useState(false)
+  const [fromLink, setFromLink] = useState(false)
 
   const [form, setForm] = useState({
     nombre: '',
@@ -26,7 +28,7 @@ export default function Register() {
     sponsor: ''
   })
 
-  // 🔥 obtener ref SOLO en cliente (sin romper build)
+  // 🔥 CAPTURAR REFERIDO DESDE URL (PRO)
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search)
@@ -37,27 +39,54 @@ export default function Register() {
           ...prev,
           sponsor: ref
         }))
+        setFromLink(true)
       }
     }
   }, [])
 
+  // 🔥 MANEJO GLOBAL DE INPUTS
+  const handleChange = (field, value) => {
+    setForm(prev => ({
+      ...prev,
+      [field]: value
+    }))
+  }
+
+  // 🔥 SUBMIT
   const handleSubmit = async (e) => {
     e.preventDefault()
 
-    const res = await fetch('/api/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form)
-    })
+    if (loading) return
 
-    const data = await res.json()
-
-    if (data.message) {
-      alert(data.message)
-      router.push('/login')
-    } else {
-      alert(data.error)
+    // 🔥 VALIDACIÓN BÁSICA
+    if (!form.email || !form.password) {
+      alert('Completa los campos obligatorios')
+      return
     }
+
+    setLoading(true)
+
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form)
+      })
+
+      const data = await res.json()
+
+      if (data.message) {
+        alert(data.message)
+        router.push('/login')
+      } else {
+        alert(data.error || 'Error al registrar')
+      }
+
+    } catch (err) {
+      alert('Error de conexión')
+    }
+
+    setLoading(false)
   }
 
   return (
@@ -70,76 +99,93 @@ export default function Register() {
           <div style={styles.grid}>
 
             <input placeholder="Nombres"
+              value={form.nombre}
               style={styles.input}
-              onChange={e => setForm({...form, nombre: e.target.value})}
+              onChange={e => handleChange('nombre', e.target.value)}
             />
 
             <input placeholder="Apellidos"
+              value={form.apellidos}
               style={styles.input}
-              onChange={e => setForm({...form, apellidos: e.target.value})}
+              onChange={e => handleChange('apellidos', e.target.value)}
             />
 
             <input placeholder="Documento"
+              value={form.documento}
               style={styles.input}
-              onChange={e => setForm({...form, documento: e.target.value})}
+              onChange={e => handleChange('documento', e.target.value)}
             />
 
             <input placeholder="Celular"
+              value={form.celular}
               style={styles.input}
-              onChange={e => setForm({...form, celular: e.target.value})}
+              onChange={e => handleChange('celular', e.target.value)}
             />
 
             <input placeholder="País"
+              value={form.pais}
               style={styles.input}
-              onChange={e => setForm({...form, pais: e.target.value})}
+              onChange={e => handleChange('pais', e.target.value)}
             />
 
             <input placeholder="Departamento"
+              value={form.departamento}
               style={styles.input}
-              onChange={e => setForm({...form, departamento: e.target.value})}
+              onChange={e => handleChange('departamento', e.target.value)}
             />
 
             <input placeholder="Provincia"
+              value={form.provincia}
               style={styles.input}
-              onChange={e => setForm({...form, provincia: e.target.value})}
+              onChange={e => handleChange('provincia', e.target.value)}
             />
 
             <input placeholder="Distrito"
+              value={form.distrito}
               style={styles.input}
-              onChange={e => setForm({...form, distrito: e.target.value})}
+              onChange={e => handleChange('distrito', e.target.value)}
             />
 
             <input type="email" placeholder="Correo electrónico"
+              value={form.email}
               style={styles.input}
-              onChange={e => setForm({...form, email: e.target.value})}
+              onChange={e => handleChange('email', e.target.value)}
             />
 
             <input type="password" placeholder="Contraseña"
+              value={form.password}
               style={styles.input}
-              onChange={e => setForm({...form, password: e.target.value})}
+              onChange={e => handleChange('password', e.target.value)}
             />
 
           </div>
 
           <input placeholder="Dirección completa"
+            value={form.direccion}
             style={styles.inputFull}
-            onChange={e => setForm({...form, direccion: e.target.value})}
+            onChange={e => handleChange('direccion', e.target.value)}
           />
 
           <input placeholder="Referencia"
+            value={form.referencia}
             style={styles.inputFull}
-            onChange={e => setForm({...form, referencia: e.target.value})}
+            onChange={e => handleChange('referencia', e.target.value)}
           />
 
+          {/* 🔥 CAMPO REFERIDO */}
           <input
             value={form.sponsor}
             placeholder="Código de patrocinador"
-            style={styles.inputFull}
-            onChange={e => setForm({...form, sponsor: e.target.value})}
+            style={{
+              ...styles.inputFull,
+              background: fromLink ? '#f3f4f6' : 'white'
+            }}
+            onChange={e => handleChange('sponsor', e.target.value)}
+            readOnly={fromLink} // 🔥 bloquea si viene por link
           />
 
-          <button style={styles.button}>
-            Registrarse
+          <button style={styles.button} disabled={loading}>
+            {loading ? 'Registrando...' : 'Registrarse'}
           </button>
 
         </form>

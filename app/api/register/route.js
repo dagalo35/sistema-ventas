@@ -31,11 +31,15 @@ export async function POST(req) {
     let sponsorUUID = null
 
     if (sponsor) {
-      const { data: sponsorUser } = await supabase
+      const { data: sponsorUser, error: sponsorError } = await supabase
         .from('users')
         .select('supabase_id')
         .eq('codigo', sponsor)
         .maybeSingle()
+
+      if (sponsorError) {
+        return Response.json({ error: sponsorError.message })
+      }
 
       if (!sponsorUser) {
         return Response.json({ error: 'Código de patrocinador inválido' })
@@ -44,7 +48,7 @@ export async function POST(req) {
       sponsorUUID = sponsorUser.supabase_id
     }
 
-    // 🔹 CREAR USUARIO EN AUTH (FORMA CORRECTA)
+    // 🔹 CREAR USUARIO EN AUTH
     const { data: authData, error: authError } =
       await supabase.auth.signUp({
         email,
@@ -61,20 +65,19 @@ export async function POST(req) {
 
     const user = authData.user
 
-    // 🔹 GENERAR CÓDIGO
+    // 🔹 GENERAR CÓDIGO ÚNICO
     const { count, error: countError } = await supabase
-    .from('users')
-    .select('*', { count: 'exact', head: true })
+      .from('users')
+      .select('*', { count: 'exact', head: true })
 
     if (countError) {
-    return Response.json({ error: countError.message })
+      return Response.json({ error: countError.message })
     }
 
     const nuevoNumero = (count || 0) + 1
-
     const codigoGenerado = `GHC-${String(nuevoNumero).padStart(3, '0')}`
 
-    // 🔹 INSERTAR EN TU TABLA
+    // 🔹 INSERTAR EN TABLA USERS
     const { error: dbError } = await supabase
       .from('users')
       .insert({
@@ -91,7 +94,11 @@ export async function POST(req) {
         email,
         celular,
         codigo: codigoGenerado,
+
+        // 🔥 AQUÍ ESTÁ LA CORRECCIÓN CLAVE
+        referido_por: sponsor || null,
         referido_por_uuid: sponsorUUID,
+
         activo: true
       })
 
