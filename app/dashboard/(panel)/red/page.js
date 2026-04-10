@@ -28,39 +28,60 @@ export default function Red() {
       return
     }
 
+    // 🔹 obtener usuario actual
+    const { data: me } = await supabase
+      .from("users")
+      .select("*")
+      .eq("supabase_id", user.id)
+      .single()
+
+    if (!me) return
+
+    // 🔹 obtener todos los usuarios
     const { data: users } = await supabase
       .from("users")
       .select("*")
 
     if (!users) return
 
-    // 🔥 MAPA
-    const map = {}
+    // 🔥 función para construir árbol desde UUID
+    const buildTreeByUUID = (userId) => {
+      const user = users.find(u => u.supabase_id === userId)
 
-    users.forEach(u => {
-      map[u.supabase_id] = {
-        name: (u.nombre || "SIN NOMBRE").toUpperCase(),
+      if (!user) return null
+
+      return {
+        name: (user.nombre || "SIN NOMBRE").toUpperCase(),
         attributes: {
-          fecha: u.created_at
-            ? new Date(u.created_at).toLocaleDateString()
+          fecha: user.created_at
+            ? new Date(user.created_at).toLocaleDateString()
             : "",
-          codigo: u.codigo || ""
+          codigo: user.codigo || ""
         },
-        children: []
+        children: users
+          .filter(u => u.referido_por_uuid === userId)
+          .map(child => buildTreeByUUID(child.supabase_id))
       }
-    })
+    }
 
-    let root = null
+    // 🔥 ADMIN → VE TODA LA RED
+    if (me.role === "admin") {
+      const roots = users.filter(u => !u.referido_por_uuid)
 
-    users.forEach(u => {
-      if (u.referido_por_uuid) {
-        map[u.referido_por_uuid]?.children.push(map[u.supabase_id])
-      } else {
-        root = map[u.supabase_id]
+      const fullTree = {
+        name: "RED GLOBAL",
+        attributes: {},
+        children: roots.map(root => buildTreeByUUID(root.supabase_id))
       }
-    })
 
-    setTreeData(root)
+      setTreeData(fullTree)
+      return
+    }
+
+    // 🔹 USUARIO NORMAL → SOLO SU RED
+    const myTree = buildTreeByUUID(me.supabase_id)
+
+    setTreeData(myTree)
   }
 
   return (
@@ -69,10 +90,10 @@ export default function Red() {
         <Tree
           data={treeData}
           orientation="vertical"
-          pathFunc="diagonal" // 🔥 líneas suaves PRO
+          pathFunc="diagonal"
           zoomable={true}
           draggable={true}
-          collapsible={true} // 🔥 expandir / cerrar
+          collapsible={true}
           translate={{ x: 500, y: 120 }}
           nodeSize={{ x: 200, y: 120 }}
           separation={{ siblings: 1.5, nonSiblings: 2 }}
@@ -108,7 +129,7 @@ const renderNode = ({ nodeDatum, toggleNode }) => (
   </g>
 )
 
-/* 🎨 ESTILOS PRO */
+/* 🎨 ESTILOS */
 const styles = {
   container: {
     width: "100%",
