@@ -20,26 +20,42 @@ export default function Login() {
 
   const [loading, setLoading] = useState(false)
 
+  // 🔥 LOGIN
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
 
-    // 🔥 LOGIN REAL CON SUPABASE
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithPassword({
       email: form.email,
       password: form.password
     })
 
-    if (authError) {
-      setLoading(false)
-      alert(authError.message)
+    setLoading(false)
+
+    if (error) {
+      alert(error.message)
       return
     }
 
-    setLoading(false)
-
-    // 🔥 ENTRA DIRECTO AL DASHBOARD
     router.push('/dashboard')
+  }
+
+  // 🔥 RECUPERAR CONTRASEÑA
+  const handleResetPassword = async () => {
+    if (!form.email) {
+      alert('Ingresa tu correo primero')
+      return
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(form.email, {
+      redirectTo: `${window.location.origin}/update-password`
+    })
+
+    if (error) {
+      alert(error.message)
+    } else {
+      alert('Revisa tu correo para restablecer tu contraseña')
+    }
   }
 
   return (
@@ -79,15 +95,24 @@ export default function Login() {
         </form>
 
         <div style={styles.links}>
-          <a href="#">Olvidé mi contraseña</a> |{' '}
-          <a href="/register">Crear cuenta</a>
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault()
+              handleResetPassword()
+            }}
+            style={{ cursor: 'pointer' }}
+          >
+            Olvidé mi contraseña
+          </a>{' '}
+          | <a href="/register">Crear cuenta</a>
         </div>
       </div>
     </div>
   )
 }
 
-// 🎨 ESTILOS PRO
+// 🎨 ESTILOS
 const styles = {
   body: {
     height: '100vh',
@@ -131,8 +156,7 @@ const styles = {
     borderRadius: '10px',
     border: '1px solid #e5e7eb',
     outline: 'none',
-    fontSize: '14px',
-    transition: '0.2s'
+    fontSize: '14px'
   },
 
   button: {
@@ -144,8 +168,7 @@ const styles = {
     color: 'white',
     fontWeight: '600',
     fontSize: '14px',
-    cursor: 'pointer',
-    transition: '0.3s'
+    cursor: 'pointer'
   },
 
   links: {
