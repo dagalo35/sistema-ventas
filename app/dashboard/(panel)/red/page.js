@@ -26,7 +26,6 @@ export default function Red() {
       return;
     }
 
-    // 🔹 usuario actual
     const { data: me } = await supabase
       .from("users")
       .select("*")
@@ -37,12 +36,10 @@ export default function Red() {
 
     setRole(me.role);
 
-    // 🔹 todos los usuarios
     const { data: users } = await supabase
       .from("users")
       .select("*");
 
-    // 🔹 construir árbol (USANDO codigo y referido_por)
     function buildTree(parentCode) {
       return users
         ?.filter(u => u.referido_por === parentCode)
@@ -52,9 +49,7 @@ export default function Red() {
         }));
     }
 
-    // 🔥 ADMIN → VE TODA LA RED
     if (me.role === "admin") {
-
       const roots = users.filter(u => !u.referido_por);
 
       const fullTree = roots.map(root => ({
@@ -66,7 +61,6 @@ export default function Red() {
       return;
     }
 
-    // 🔹 USUARIO NORMAL → SOLO SU RED
     const myTree = {
       ...me,
       children: buildTree(me.codigo)
@@ -79,67 +73,78 @@ export default function Red() {
 
   return (
     <div style={styles.content}>
-      <h1 style={styles.title}>🌐 Mi Red</h1>
+      <h1 style={styles.title}>🌐 MI RED</h1>
 
       <div style={styles.tree}>
-
-        {/* 🔥 ADMIN */}
-        {role === "admin" ? (
-          tree.children?.map(child => (
-            <Node key={child.id} user={child} />
-          ))
-        ) : (
-          // 🔹 USUARIO NORMAL
-          <Node user={tree} />
-        )}
-
+        {role === "admin"
+          ? tree.children?.map(child => (
+              <Node key={child.id} user={child} />
+            ))
+          : <Node user={tree} />}
       </div>
     </div>
   );
 }
 
-/* 🔥 NODO */
+/* 🔥 NODO PRO */
 function Node({ user }) {
   return (
     <div style={styles.nodeWrapper}>
 
       <div style={styles.node}>
         <div style={styles.avatar}></div>
+
         <span style={styles.name}>
-          {user.nombre || "Sin nombre"}
+          {(user.nombre || "SIN NOMBRE").toUpperCase()}
+        </span>
+
+        <span style={styles.date}>
+          {user.created_at
+            ? new Date(user.created_at).toLocaleDateString()
+            : ""}
         </span>
       </div>
 
+      {/* 🔥 LÍNEA HACIA HIJOS */}
       {user.children && user.children.length > 0 && (
-        <div style={styles.children}>
-          {user.children.map(child => (
-            <Node key={child.id} user={child} />
-          ))}
-        </div>
+        <>
+          <div style={styles.lineVertical}></div>
+
+          <div style={styles.children}>
+            {user.children.map((child, index) => (
+              <div key={child.id} style={styles.childWrapper}>
+                <div style={styles.lineHorizontal}></div>
+                <Node user={child} />
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
 }
 
-/* 🎨 ESTILOS */
+/* 🎨 ESTILOS PRO */
 const styles = {
   content: {
-    padding: "40px"
+    padding: "40px",
+    background: "#f9fafb",
+    minHeight: "100vh"
   },
 
   title: {
-    marginBottom: "40px"
+    marginBottom: "40px",
+    textAlign: "center"
   },
 
   tree: {
     display: "flex",
-    justifyContent: "center",
-    flexWrap: "wrap",
-    gap: "40px"
+    justifyContent: "center"
   },
 
   nodeWrapper: {
-    textAlign: "center"
+    textAlign: "center",
+    position: "relative"
   },
 
   node: {
@@ -148,7 +153,7 @@ const styles = {
     borderRadius: "12px",
     boxShadow: "0 5px 15px rgba(0,0,0,0.1)",
     display: "inline-block",
-    minWidth: "100px"
+    minWidth: "120px"
   },
 
   avatar: {
@@ -160,14 +165,39 @@ const styles = {
   },
 
   name: {
-    fontWeight: "bold"
+    fontWeight: "bold",
+    display: "block"
+  },
+
+  date: {
+    fontSize: "11px",
+    color: "#6b7280"
+  },
+
+  /* 🔥 líneas */
+  lineVertical: {
+    width: "2px",
+    height: "20px",
+    background: "#22c55e",
+    margin: "0 auto"
+  },
+
+  lineHorizontal: {
+    height: "2px",
+    background: "#22c55e",
+    marginBottom: "20px"
   },
 
   children: {
-    marginTop: "30px",
     display: "flex",
     justifyContent: "center",
     gap: "40px",
-    flexWrap: "wrap"
+    marginTop: "10px"
+  },
+
+  childWrapper: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center"
   }
 };
