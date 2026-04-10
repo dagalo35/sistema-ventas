@@ -62,7 +62,17 @@ export async function POST(req) {
     const user = authData.user
 
     // 🔹 GENERAR CÓDIGO
-    const codigoGenerado = `GHC-${Date.now()}`
+    const { count, error: countError } = await supabase
+    .from('users')
+    .select('*', { count: 'exact', head: true })
+
+    if (countError) {
+    return Response.json({ error: countError.message })
+    }
+
+    const nuevoNumero = (count || 0) + 1
+
+    const codigoGenerado = `GHC-${String(nuevoNumero).padStart(3, '0')}`
 
     // 🔹 INSERTAR EN TU TABLA
     const { error: dbError } = await supabase
