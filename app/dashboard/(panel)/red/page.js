@@ -11,6 +11,7 @@ const supabase = createClient(
 
 export default function Red() {
   const [tree, setTree] = useState(null);
+  const [role, setRole] = useState(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -32,12 +33,16 @@ export default function Red() {
       .eq("supabase_id", user.id)
       .single();
 
+    if (!me) return;
+
+    setRole(me.role);
+
     // 🔹 todos los usuarios
     const { data: users } = await supabase
       .from("users")
       .select("*");
 
-    // 🔹 construir árbol
+    // 🔹 construir árbol (USANDO codigo y referido_por)
     function buildTree(parentCode) {
       return users
         ?.filter(u => u.referido_por === parentCode)
@@ -47,10 +52,9 @@ export default function Red() {
         }));
     }
 
-    // 🔥 SI ES ADMIN → VER TODO
+    // 🔥 ADMIN → VE TODA LA RED
     if (me.role === "admin") {
 
-      // usuarios raíz (sin sponsor)
       const roots = users.filter(u => !u.referido_por);
 
       const fullTree = roots.map(root => ({
@@ -62,7 +66,7 @@ export default function Red() {
       return;
     }
 
-    // 🔹 USUARIO NORMAL
+    // 🔹 USUARIO NORMAL → SOLO SU RED
     const myTree = {
       ...me,
       children: buildTree(me.codigo)
@@ -79,13 +83,13 @@ export default function Red() {
 
       <div style={styles.tree}>
 
-        {/* 🔥 ADMIN → múltiples raíces */}
-        {tree.children ? (
-          tree.children.map(child => (
+        {/* 🔥 ADMIN */}
+        {role === "admin" ? (
+          tree.children?.map(child => (
             <Node key={child.id} user={child} />
           ))
         ) : (
-          // 🔹 usuario normal
+          // 🔹 USUARIO NORMAL
           <Node user={tree} />
         )}
 
