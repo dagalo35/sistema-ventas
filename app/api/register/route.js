@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 // ✅ USAR SERVICE ROLE (SERVER ONLY)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
 export async function POST(req) {
@@ -59,9 +59,10 @@ export async function POST(req) {
 
     // 🔹 3. CREAR USUARIO EN AUTH (ADMIN)
     const { data: authData, error: authError } =
-      await supabase.auth.signUp({
+      await supabase.auth.admin.createUser({
         email,
         password,
+        email_confirm:true
       })
     console.log("AUTH DATA:", authData)
     console.log("AUTH ERROR:", authError)
