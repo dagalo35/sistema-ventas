@@ -1,203 +1,150 @@
 'use client'
 
-import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react"
+import { createClient } from "@supabase/supabase-js"
+import dynamic from "next/dynamic"
+import { useRouter } from "next/navigation"
+
+const Tree = dynamic(() => import("react-d3-tree"), { ssr: false })
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+)
 
 export default function Red() {
-  const [tree, setTree] = useState(null);
-  const [role, setRole] = useState(null);
-  const router = useRouter();
+  const [treeData, setTreeData] = useState(null)
+  const router = useRouter()
 
   useEffect(() => {
-    loadTree();
-  }, []);
+    loadTree()
+  }, [])
 
-  async function loadTree() {
-    const { data: { user } } = await supabase.auth.getUser();
+  const loadTree = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
-      router.push("/login");
-      return;
+      router.push("/login")
+      return
     }
-
-    const { data: me } = await supabase
-      .from("users")
-      .select("*")
-      .eq("supabase_id", user.id)
-      .single();
-
-    if (!me) return;
-
-    setRole(me.role);
 
     const { data: users } = await supabase
       .from("users")
-      .select("*");
+      .select("*")
 
-    function buildTree(parentCode) {
-      return users
-        ?.filter(u => u.referido_por === parentCode)
-        .map(u => ({
-          ...u,
-          children: buildTree(u.codigo)
-        }));
-    }
+    if (!users) return
 
-    if (me.role === "admin") {
-      const roots = users.filter(u => !u.referido_por);
+    // 🔥 MAPA
+    const map = {}
 
-      const fullTree = roots.map(root => ({
-        ...root,
-        children: buildTree(root.codigo)
-      }));
+    users.forEach(u => {
+      map[u.supabase_id] = {
+        name: (u.nombre || "SIN NOMBRE").toUpperCase(),
+        attributes: {
+          fecha: u.created_at
+            ? new Date(u.created_at).toLocaleDateString()
+            : "",
+          codigo: u.codigo || ""
+        },
+        children: []
+      }
+    })
 
-      setTree({ children: fullTree });
-      return;
-    }
+    let root = null
 
-    const myTree = {
-      ...me,
-      children: buildTree(me.codigo)
-    };
+    users.forEach(u => {
+      if (u.referido_por_uuid) {
+        map[u.referido_por_uuid]?.children.push(map[u.supabase_id])
+      } else {
+        root = map[u.supabase_id]
+      }
+    })
 
-    setTree(myTree);
+    setTreeData(root)
   }
 
-  if (!tree) return <p style={{ padding: 20 }}>Cargando red...</p>;
-
   return (
-    <div style={styles.content}>
-      <h1 style={styles.title}>🌐 MI RED</h1>
-
-      <div style={styles.tree}>
-        {role === "admin"
-          ? tree.children?.map(child => (
-              <Node key={child.id} user={child} />
-            ))
-          : <Node user={tree} />}
-      </div>
+    <div style={styles.container}>
+      {treeData && (
+        <Tree
+          data={treeData}
+          orientation="vertical"
+          pathFunc="diagonal" // 🔥 líneas suaves PRO
+          zoomable={true}
+          draggable={true}
+          collapsible={true} // 🔥 expandir / cerrar
+          translate={{ x: 500, y: 120 }}
+          nodeSize={{ x: 200, y: 120 }}
+          separation={{ siblings: 1.5, nonSiblings: 2 }}
+          renderCustomNodeElement={renderNode}
+        />
+      )}
     </div>
-  );
+  )
 }
 
 /* 🔥 NODO PRO */
-function Node({ user }) {
-  return (
-    <div style={styles.nodeWrapper}>
-
-      <div style={styles.node}>
+const renderNode = ({ nodeDatum, toggleNode }) => (
+  <g>
+    <foreignObject x="-80" y="-40" width="160" height="100">
+      <div style={styles.card} onClick={toggleNode}>
+        
         <div style={styles.avatar}></div>
 
-        <span style={styles.name}>
-          {(user.nombre || "SIN NOMBRE").toUpperCase()}
-        </span>
+        <div style={styles.name}>
+          {nodeDatum.name}
+        </div>
 
-        <span style={styles.date}>
-          {user.created_at
-            ? new Date(user.created_at).toLocaleDateString()
-            : ""}
-        </span>
+        <div style={styles.code}>
+          {nodeDatum.attributes?.codigo}
+        </div>
+
+        <div style={styles.date}>
+          {nodeDatum.attributes?.fecha}
+        </div>
+
       </div>
-
-      {/* 🔥 LÍNEA HACIA HIJOS */}
-      {user.children && user.children.length > 0 && (
-        <>
-          <div style={styles.lineVertical}></div>
-
-          <div style={styles.children}>
-            {user.children.map((child, index) => (
-              <div key={child.id} style={styles.childWrapper}>
-                <div style={styles.lineHorizontal}></div>
-                <Node user={child} />
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
+    </foreignObject>
+  </g>
+)
 
 /* 🎨 ESTILOS PRO */
 const styles = {
-  content: {
-    padding: "40px",
-    background: "#f9fafb",
-    minHeight: "100vh"
+  container: {
+    width: "100%",
+    height: "90vh",
+    background: "#f9fafb"
   },
 
-  title: {
-    marginBottom: "40px",
-    textAlign: "center"
-  },
-
-  tree: {
-    display: "flex",
-    justifyContent: "center"
-  },
-
-  nodeWrapper: {
-    textAlign: "center",
-    position: "relative"
-  },
-
-  node: {
+  card: {
     background: "white",
-    padding: "15px",
     borderRadius: "12px",
-    boxShadow: "0 5px 15px rgba(0,0,0,0.1)",
-    display: "inline-block",
-    minWidth: "120px"
+    padding: "10px",
+    textAlign: "center",
+    boxShadow: "0 5px 15px rgba(0,0,0,0.15)",
+    cursor: "pointer"
   },
 
   avatar: {
-    width: "60px",
-    height: "60px",
+    width: "40px",
+    height: "40px",
     borderRadius: "50%",
     background: "#22c55e",
-    margin: "0 auto 10px"
+    margin: "0 auto 5px"
   },
 
   name: {
     fontWeight: "bold",
-    display: "block"
+    fontSize: "12px"
+  },
+
+  code: {
+    fontSize: "11px",
+    color: "#16a34a"
   },
 
   date: {
-    fontSize: "11px",
+    fontSize: "10px",
     color: "#6b7280"
-  },
-
-  /* 🔥 líneas */
-  lineVertical: {
-    width: "2px",
-    height: "20px",
-    background: "#22c55e",
-    margin: "0 auto"
-  },
-
-  lineHorizontal: {
-    height: "2px",
-    background: "#22c55e",
-    marginBottom: "20px"
-  },
-
-  children: {
-    display: "flex",
-    justifyContent: "center",
-    gap: "40px",
-    marginTop: "10px"
-  },
-
-  childWrapper: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center"
   }
-};
+}
