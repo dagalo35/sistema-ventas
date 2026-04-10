@@ -40,7 +40,7 @@ export default function Red() {
     // 🔹 construir árbol
     function buildTree(parentCode) {
       return users
-        ?.filter(u => u.referido_por_uuid === parentCode)
+        ?.filter(u => u.referido_por === parentCode)
         .map(u => ({
           ...u,
           children: buildTree(u.codigo)
@@ -51,7 +51,7 @@ export default function Red() {
     if (me.role === "admin") {
 
       // usuarios raíz (sin sponsor)
-      const roots = users.filter(u => !u.referido_por_uuid);
+      const roots = users.filter(u => !u.referido_por);
 
       const fullTree = roots.map(root => ({
         ...root,
