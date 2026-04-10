@@ -25,25 +25,44 @@ export default function Red() {
       return;
     }
 
+    // 🔹 usuario actual
     const { data: me } = await supabase
       .from("users")
       .select("*")
       .eq("supabase_id", user.id)
       .single();
 
+    // 🔹 todos los usuarios
     const { data: users } = await supabase
       .from("users")
       .select("*");
 
+    // 🔹 construir árbol
     function buildTree(parentCode) {
       return users
-        ?.filter(u => u.referido_por === parentCode)
+        ?.filter(u => u.referido_por_uuid === parentCode)
         .map(u => ({
           ...u,
           children: buildTree(u.codigo)
         }));
     }
 
+    // 🔥 SI ES ADMIN → VER TODO
+    if (me.role === "admin") {
+
+      // usuarios raíz (sin sponsor)
+      const roots = users.filter(u => !u.referido_por_uuid);
+
+      const fullTree = roots.map(root => ({
+        ...root,
+        children: buildTree(root.codigo)
+      }));
+
+      setTree({ children: fullTree });
+      return;
+    }
+
+    // 🔹 USUARIO NORMAL
     const myTree = {
       ...me,
       children: buildTree(me.codigo)
@@ -59,7 +78,17 @@ export default function Red() {
       <h1 style={styles.title}>🌐 Mi Red</h1>
 
       <div style={styles.tree}>
-        <Node user={tree} />
+
+        {/* 🔥 ADMIN → múltiples raíces */}
+        {tree.children ? (
+          tree.children.map(child => (
+            <Node key={child.id} user={child} />
+          ))
+        ) : (
+          // 🔹 usuario normal
+          <Node user={tree} />
+        )}
+
       </div>
     </div>
   );
@@ -73,7 +102,7 @@ function Node({ user }) {
       <div style={styles.node}>
         <div style={styles.avatar}></div>
         <span style={styles.name}>
-          {user.nombre}
+          {user.nombre || "Sin nombre"}
         </span>
       </div>
 
@@ -100,7 +129,9 @@ const styles = {
 
   tree: {
     display: "flex",
-    justifyContent: "center"
+    justifyContent: "center",
+    flexWrap: "wrap",
+    gap: "40px"
   },
 
   nodeWrapper: {
@@ -132,6 +163,7 @@ const styles = {
     marginTop: "30px",
     display: "flex",
     justifyContent: "center",
-    gap: "40px"
+    gap: "40px",
+    flexWrap: "wrap"
   }
 };
