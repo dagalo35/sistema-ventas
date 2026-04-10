@@ -4,15 +4,12 @@ export const runtime = "nodejs"
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
 
 export async function POST(req) {
   try {
-    console.log("INICIO REGISTER")
-
     const body = await req.json()
-    console.log("BODY:", body)
 
     const {
       nombre,
@@ -31,12 +28,12 @@ export async function POST(req) {
     } = body
 
     // 🔹 VALIDAR SPONSOR
-    let sponsorCodigo = null
+    let sponsorUUID = null
 
     if (sponsor) {
       const { data: sponsorUser } = await supabase
         .from('users')
-        .select('codigo')
+        .select('supabase_id')
         .eq('codigo', sponsor)
         .maybeSingle()
 
@@ -44,22 +41,15 @@ export async function POST(req) {
         return Response.json({ error: 'Código de patrocinador inválido' })
       }
 
-      sponsorCodigo = sponsorUser.codigo
+      sponsorUUID = sponsorUser.supabase_id
     }
 
-    // 🔹 GENERAR CÓDIGO (ANTI DUPLICADO)
-    const codigoGenerado = `GHC-${Date.now()}`
-
-    // 🔹 CREAR USUARIO
+    // 🔹 CREAR USUARIO EN AUTH (FORMA CORRECTA)
     const { data: authData, error: authError } =
-      await supabase.auth.admin.createUser({
+      await supabase.auth.signUp({
         email,
-        password,
-        email_confirm: true
+        password
       })
-
-    console.log("AUTH DATA:", authData)
-    console.log("AUTH ERROR:", authError)
 
     if (authError) {
       return Response.json({ error: authError.message })
@@ -71,7 +61,10 @@ export async function POST(req) {
 
     const user = authData.user
 
-    // 🔹 INSERTAR EN BD
+    // 🔹 GENERAR CÓDIGO
+    const codigoGenerado = `GHC-${Date.now()}`
+
+    // 🔹 INSERTAR EN TU TABLA
     const { error: dbError } = await supabase
       .from('users')
       .insert({
@@ -88,12 +81,11 @@ export async function POST(req) {
         email,
         celular,
         codigo: codigoGenerado,
-        referido_por: sponsorCodigo,
+        referido_por_uuid: sponsorUUID,
         activo: true
       })
 
     if (dbError) {
-      console.error("DB ERROR:", dbError)
       return Response.json({ error: dbError.message })
     }
 
@@ -103,8 +95,7 @@ export async function POST(req) {
     })
 
   } catch (err) {
-    console.error('ERROR REGISTER:', err)
-
+    console.error(err)
     return Response.json({
       error: 'Error del servidor'
     })
