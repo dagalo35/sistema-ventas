@@ -88,7 +88,7 @@ export async function POST(req) {
       // Obtener datos del patrocinador actual para saber quién es SU patrocinador (para el siguiente nivel)
       const { data: sponsorData } = await supabase
         .from("users")
-        .select("supabase_id, referido_por_uuid, activo")
+        .select("supabase_id, referido_por_uuid, activo, role")
         .eq("supabase_id", actualSponsorUUID)
         .single()
 

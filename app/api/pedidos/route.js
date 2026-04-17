@@ -131,24 +131,46 @@ export async function PUT(req) {
       // 1. Obtener datos del comprador (para conocer a su patrocinador)
       const { data: comprador } = await supabase
         .from('users')
-        .select('referido_por_uuid, saldo')
+        .select('referido_por_uuid, saldo, role')
         .eq('supabase_id', pedidoPrevio.user_id)
         .single()
 
       const comisionesAInsertar = []
+      const now = new Date()
+      const inicioMes = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
       
       // Obtenemos la cantidad real de items del arreglo ["PROD1", "PROD2", ...]
       const cantidadItems = Array.isArray(pedidoPrevio.productos) ? pedidoPrevio.productos.length : 0
 
-      // A. COMISIÓN NIVEL 0 (Compra Propia) - S/ 5.00 por cada producto
-      comisionesAInsertar.push({
-        user_id: pedidoPrevio.user_id,
-        from_user: pedidoPrevio.user_id,
-        monto: 5.00 * cantidadItems, // Se multiplica por la cantidad de items en el pedido
-        tipo: 'Compra propia',
-        nivel: 0,
-        pedido_id: pedido_id
-      })
+      // A. COMISIÓN NIVEL 0 (Compra Propia) - Requiere MAGVIT17 y COLLAGEM en el mes
+      if (comprador && comprador.role !== 'admin') {
+        const { data: comprasMesComprador } = await supabase
+          .from('pedidos')
+          .select('productos')
+          .eq('user_id', pedidoPrevio.user_id)
+          .eq('estado', 'aprobado')
+          .gte('created_at', inicioMes)
+
+        // Combinar productos de este pedido con compras previas aprobadas del mes
+        const productosMesTotal = [
+          ...(Array.isArray(pedidoPrevio.productos) ? pedidoPrevio.productos : []),
+          ...(comprasMesComprador?.flatMap(p => p.productos) || [])
+        ]
+
+        const tieneMagvit = productosMesTotal.includes('MAGVIT17')
+        const tieneCollagem = productosMesTotal.includes('COLLAGEM')
+
+        if (tieneMagvit && tieneCollagem) {
+          comisionesAInsertar.push({
+            user_id: pedidoPrevio.user_id,
+            from_user: pedidoPrevio.user_id,
+            monto: 5.00 * cantidadItems,
+            tipo: 'Compra propia',
+            nivel: 0,
+            pedido_id: pedido_id
+          })
+        }
+      }
 
       // B. REPARTO MULTINIVEL A PATROCINADORES (3 Niveles)
       const configuracionNiveles = [
@@ -164,19 +186,39 @@ export async function PUT(req) {
 
         const { data: sponsor } = await supabase
           .from("users")
-          .select("supabase_id, referido_por_uuid, activo, saldo")
+          .select("supabase_id, referido_por_uuid, activo, role")
           .eq("supabase_id", actualSponsorUUID)
           .single()
 
-        if (sponsor && sponsor.activo) {
-          comisionesAInsertar.push({
-            user_id: sponsor.supabase_id,
-            from_user: pedidoPrevio.user_id,
-            monto: nivel.monto * cantidadItems, // Multiplicación dinámica por cantidad de productos
-            tipo: `Comisión Red - ${nivel.desc}`,
-            nivel: parseInt(nivel.desc.split(' ')[1]),
-            pedido_id: pedido_id
-          })
+        if (sponsor) {
+          let calificado = false
+          
+          if (sponsor.role !== 'admin' && sponsor.activo) {
+            const { data: comprasSponsor } = await supabase
+              .from('pedidos')
+              .select('productos')
+              .eq('user_id', sponsor.supabase_id)
+              .eq('estado', 'aprobado')
+              .gte('created_at', inicioMes)
+
+            const prodsSponsor = comprasSponsor?.flatMap(p => p.productos) || []
+            if (prodsSponsor.includes('MAGVIT17') && prodsSponsor.includes('COLLAGEM')) {
+              calificado = true
+            }
+          }
+
+          if (calificado) {
+            comisionesAInsertar.push({
+              user_id: sponsor.supabase_id,
+              from_user: pedidoPrevio.user_id,
+              monto: (nivel.monto * cantidadItems),
+              tipo: `Comisión Red - ${nivel.desc}`,
+              nivel: parseInt(nivel.desc.split(' ')[1]),
+              pedido_id: pedido_id
+            })
+          }
+          
+          // Compresión lógica: Seguimos subiendo aunque este no califique
           actualSponsorUUID = sponsor.referido_por_uuid
         } else {
           break

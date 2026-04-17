@@ -13,6 +13,9 @@ const supabase = createClient(
 export default function Dashboard() {
   const [userData, setUserData] = useState(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [pendingWithdrawal, setPendingWithdrawal] = useState(0);
+  const [gananciaPropia, setGananciaPropia] = useState(0);
+  const [gananciaRed, setGananciaRed] = useState(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -58,6 +61,28 @@ export default function Dashboard() {
     } else {
       setPendingCount(count || 0);
     }
+
+    // 🔥 CALCULAR RETIROS PENDIENTES
+    const { data: pendingRets } = await supabase
+      .from("retiros")
+      .select("monto")
+      .eq("user_id", user.id)
+      .eq("estado", "pendiente");
+
+    const totalPending = pendingRets?.reduce((acc, r) => acc + parseFloat(r.monto || 0), 0) || 0;
+    setPendingWithdrawal(totalPending);
+
+    // 🔥 CALCULAR DESGLOSE DE COMISIONES
+    const { data: coms } = await supabase
+      .from("comisiones")
+      .select("monto, nivel")
+      .eq("user_id", user.id);
+
+    const propia = coms?.filter(c => c.nivel === 0).reduce((acc, c) => acc + parseFloat(c.monto || 0), 0) || 0;
+    const red = coms?.filter(c => c.nivel > 0).reduce((acc, c) => acc + parseFloat(c.monto || 0), 0) || 0;
+
+    setGananciaPropia(propia);
+    setGananciaRed(red);
   }
 
   function estaActivo(usuario) {
@@ -176,7 +201,14 @@ export default function Dashboard() {
         {/* STATS */}
         <div style={styles.stats}>
           <div>
-            Saldo Disponible: <strong>S/ {Number(userData.saldo || 0).toFixed(2)}</strong>
+            Saldo a Retirar: <strong style={{ color: '#16a34a', fontSize: '18px' }}>S/ {Number(userData.saldo || 0).toFixed(2)}</strong>
+            <div style={{ fontSize: '10px', color: '#666', marginTop: '5px' }}>
+              (Propias: S/ {gananciaPropia.toFixed(2)} + Red: S/ {gananciaRed.toFixed(2)})
+            </div>
+          </div>
+
+          <div>
+            Monto en Proceso: <strong style={{ color: '#f59e0b' }}>S/ {pendingWithdrawal.toFixed(2)}</strong>
           </div>
 
           <div>

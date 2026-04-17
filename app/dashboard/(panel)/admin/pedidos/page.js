@@ -153,6 +153,7 @@ export default function AdminPedidos() {
           >
             <option value="todos">Todos los estados</option>
             <option value="enviado">Pendiente</option>
+            <option value="pendiente_pago">Pendiente Pago</option>
             <option value="aprobado">Aprobado</option>
             <option value="empaquetado">Empaquetado</option>
             <option value="listo_recojo">Listo Recojo</option>
@@ -225,6 +226,7 @@ export default function AdminPedidos() {
                     onChange={(e) => cambiarEstado(p.id, e.target.value)}
                   >
                     <option value="enviado">Pendiente</option>
+                    <option value="pendiente_pago">Pendiente Pago</option>
                     <option value="aprobado">Aprobar</option>
                     <option value="empaquetado">Empaquetado</option>
                     <option value="listo_recojo">Listo Recojo</option>

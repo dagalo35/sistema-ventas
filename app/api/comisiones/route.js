@@ -37,7 +37,8 @@ export async function GET(req) {
         beneficiary:users!user_id (
           codigo,
           nombre,
-          apellidos
+          apellidos,
+          role
         ),
         origin:users!from_user (
           codigo,
@@ -63,7 +64,9 @@ export async function GET(req) {
 
     if (error) throw error
 
-    return Response.json(data || [])
+    // Filtrar para que no figuren comisiones donde el beneficiario es un administrador
+    const filteredData = data?.filter(c => c.beneficiary?.role !== 'admin') || data || []
+    return Response.json(filteredData)
   } catch (err) {
     console.error("Error en API Comisiones:", err)
     return Response.json({ error: 'Error interno del servidor' }, { status: 500 })

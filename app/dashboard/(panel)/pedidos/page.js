@@ -30,6 +30,7 @@ export default function Pedidos() {
   const [modalOpen, setModalOpen] = useState(false)
   const [tipoEntrega, setTipoEntrega] = useState("recojo_oficina")
   const [file, setFile] = useState(null)
+  const [pagoFisico, setPagoFisico] = useState(false)
   const [preview, setPreview] = useState(null)
   const [showQR, setShowQR] = useState(false)
   const [viewImg, setViewImg] = useState(null)
@@ -147,8 +148,8 @@ export default function Pedidos() {
   }
 
   async function confirmarPedido() {
-    if (!file) {
-      toast.warning("Por favor, sube el comprobante de pago")
+    if (!file && !pagoFisico) {
+      toast.warning("Por favor, sube el comprobante o selecciona pago físico")
       return
     }
 
@@ -157,13 +158,18 @@ export default function Pedidos() {
     const crearPedidoPromise = (async () => {
       setLoading(true)
       try {
-        const fileName = `comp-${Date.now()}-${file.name}`
-        const { error: uploadError } = await supabase.storage.from('comprobantes').upload(fileName, file)
-        if (uploadError) throw uploadError
+        let finalUrl = "fisico"
 
-        const { data } = supabase.storage
-          .from('comprobantes')
-          .getPublicUrl(fileName)
+        if (!pagoFisico) {
+          const fileName = `comp-${Date.now()}-${file.name}`
+          const { error: uploadError } = await supabase.storage.from('comprobantes').upload(fileName, file)
+          if (uploadError) throw uploadError
+
+          const { data: publicUrlData } = supabase.storage
+            .from('comprobantes')
+            .getPublicUrl(fileName)
+          finalUrl = publicUrlData.publicUrl
+        }
 
         const productosArray = []
         Object.keys(carrito).forEach(n => {
@@ -181,8 +187,8 @@ export default function Pedidos() {
             total,
             tipo_entrega: tipoEntrega,
             metodo_pago: "yape",
-            estado: "enviado",
-            comprobante_url: data.publicUrl
+            estado: pagoFisico ? "pendiente_pago" : "enviado",
+            comprobante_url: finalUrl
           })
         })
 
@@ -200,7 +206,7 @@ export default function Pedidos() {
               pedido_id: result.id,
               total,
               productos: productosArray,
-              comprobante: data.publicUrl,
+              comprobante: finalUrl,
               tipo_entrega: tipoEntrega
             })
           })
@@ -211,6 +217,7 @@ export default function Pedidos() {
         setModalOpen(false)
         setCarrito({})
         setFile(null)
+        setPagoFisico(false)
         setPreview(null)
         setShowQR(false)
         getPedidos()
@@ -413,21 +420,43 @@ export default function Pedidos() {
             <div style={{ marginTop: 15 }}>
               <label style={styles.labelModal}>Subir comprobante de pago</label>
 
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleFileChange}
-              />
-
-              {preview && (
-                <img
-                  src={preview}
-                  style={{
-                    marginTop: 10,
-                    width: "100%",
-                    borderRadius: 10
+              <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, background: '#f9fafb', padding: '8px 12px', borderRadius: 8 }}>
+                <input 
+                  type="checkbox" 
+                  id="chkFisico" 
+                  checked={pagoFisico} 
+                  onChange={(e) => {
+                    setPagoFisico(e.target.checked)
+                    if(e.target.checked) {
+                      setFile(null)
+                      setPreview(null)
+                    }
                   }}
                 />
+                <label htmlFor="chkFisico" style={{ cursor: 'pointer', fontSize: 14, fontWeight: '500' }}>
+                  Pagaré en físico (en el local)
+                </label>
+              </div>
+
+              {!pagoFisico && (
+                <>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                  />
+
+                  {preview && (
+                    <img
+                      src={preview}
+                      style={{
+                        marginTop: 10,
+                        width: "100%",
+                        borderRadius: 10
+                      }}
+                    />
+                  )}
+                </>
               )}
             </div>
 
@@ -436,10 +465,10 @@ export default function Pedidos() {
               <button
                 style={{
                   ...styles.btnConfirm,
-                  opacity: (file && totalItems > 0) ? 1 : 0.5
+                  opacity: ( (file || pagoFisico) && totalItems > 0) ? 1 : 0.5
                 }}
                 onClick={confirmarPedido}
-                disabled={!file || loading || totalItems === 0}
+                disabled={(!file && !pagoFisico) || loading || totalItems === 0}
               >
                 {loading ? "Procesando..." : "Confirmar Pedido"}
               </button>
@@ -506,12 +535,16 @@ export default function Pedidos() {
                 <div>💳 {p.metodo_pago || "N/A"}</div>
                 <div>
                   {p.comprobante_url ? (
-                    <button 
-                      onClick={() => setViewImg(p.comprobante_url)}
-                      style={{ ...styles.btnEye, marginTop: 0, padding: "4px 10px" }}
-                    >
-                      👁️ Ver
-                    </button>
+                    p.comprobante_url === 'fisico' ? (
+                      <span style={{ color: '#64748b', fontSize: 12, fontWeight: 'bold' }}>📄 FÍSICO</span>
+                    ) : (
+                      <button 
+                        onClick={() => setViewImg(p.comprobante_url)}
+                        style={{ ...styles.btnEye, marginTop: 0, padding: "4px 10px" }}
+                      >
+                        👁️ Ver
+                      </button>
+                    )
                   ) : "N/A"}
                 </div>
                 <div><strong>S/ {p.total}</strong></div>
@@ -539,13 +572,14 @@ export default function Pedidos() {
                           fontWeight: '600'
                         }}
                       >
-                        {p.estado.toUpperCase()} <span style={{ fontSize: 9 }}>▼</span>
+                        {p.estado.replace('_', ' ').toUpperCase()} <span style={{ fontSize: 9 }}>▼</span>
                       </button>
 
                       {openMenuId === p.id && (
                         <div style={styles.statusMenu} onClick={e => e.stopPropagation()}>
                           {[
                             { val: 'enviado', label: '⏳ Enviado', color: '#f59e0b' },
+                            { val: 'pendiente_pago', label: '💳 Pendiente Pago', color: '#f59e0b' },
                             { val: 'aprobado', label: '✅ Aprobar', color: '#16a34a' },
                             { val: 'rechazado', label: '❌ Rechazar', color: '#991b1b' },
                             { val: 'listo_recojo', label: '📦 Listo Recojo', color: '#2563eb' },
@@ -580,7 +614,7 @@ export default function Pedidos() {
                         p.estado === "cancelado" ? "#dc2626" :
                         "#f59e0b"
                     }}>
-                      {p.estado}
+                      {p.estado.replace('_', ' ').toUpperCase()}
                     </span>
                   )}
                   {p.estado === "enviado" && role !== 'admin' && (
