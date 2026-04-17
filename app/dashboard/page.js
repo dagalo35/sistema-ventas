@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
+import { toast, Toaster } from "sonner";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -11,6 +12,7 @@ const supabase = createClient(
 
 export default function Dashboard() {
   const [userData, setUserData] = useState(null);
+  const [pendingCount, setPendingCount] = useState(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -25,42 +27,42 @@ export default function Dashboard() {
       return;
     }
 
-    // 🔥 TRAER USUARIO
-    const { data: userInfo } = await supabase
+    // 🔥 TRAER USUARIO (Usamos el saldo de la tabla users para mayor consistencia)
+    const { data: userInfo, error } = await supabase
       .from("users")
       .select("*")
       .eq("supabase_id", user.id)
-      .single();
+      .maybeSingle();
 
-    if (!userInfo) return;
-
-    // 🔥 🔥 🔥 LÓGICA CORRECTA (CLAVE)
-    let query = supabase
-      .from("comisiones")
-      .select("monto");
-
-    // 👤 USUARIO → solo sus comisiones
-    if (userInfo.role !== "admin") {
-      query = query.eq("user_id", userInfo.supabase_id);
+    if (error || !userInfo) {
+      console.error("Error al cargar datos del usuario:", error);
+      return;
     }
 
-    // 👑 ADMIN → NO filtra (trae todas)
+    setUserData(userInfo);
 
-    const { data: comisiones } = await query;
+    // 🔥 CONTAR PEDIDOS PENDIENTES (Admin ve total red, Usuario solo los suyos)
+    let pendingQuery = supabase
+      .from("pedidos")
+      .select("*", { count: 'exact', head: true })
+      .eq("estado", "enviado");
 
-    let total = 0;
-    comisiones?.forEach(c => {
-      total += Number(c.monto || 0);
-    });
+    if (userInfo.role !== "admin") {
+      pendingQuery = pendingQuery.eq("user_id", user.id);
+    }
 
-    setUserData({
-      ...userInfo,
-      saldo_calculado: total
-    });
+    const { count, error: countError } = await pendingQuery;
+
+    if (countError) {
+      console.error("Error al contar pedidos:", countError);
+    } else {
+      setPendingCount(count || 0);
+    }
   }
 
   function estaActivo(usuario) {
-    if (!usuario?.ultimo_pago) return false;
+    if (usuario?.role === "admin") return true;
+    if (!usuario?.activo_comisiones || !usuario?.ultimo_pago) return false;
 
     const hoy = new Date();
     const ultimo = new Date(usuario.ultimo_pago);
@@ -76,23 +78,31 @@ export default function Dashboard() {
   }
 
   async function copiarLink() {
-    const link = `${window.location.origin}/register?ref=${userData.codigo || userData.id}`;
+    if (!userData.codigo) {
+      toast.warning("Tu código de referido aún no ha sido generado.");
+      return;
+    }
+
+    const link = `${window.location.origin}/register?ref=${userData.codigo}`;
 
     try {
       await navigator.clipboard.writeText(link);
-      alert("Link copiado ✅");
+      toast.success("Link de referido copiado ✅");
     } catch (err) {
       console.error(err);
-      alert("Error al copiar");
+      toast.error("Error al copiar");
     }
   }
 
   if (!userData) return <p style={{ padding: 20 }}>Cargando...</p>;
 
-  const referralLink = `${window.location.origin}/register?ref=${userData.codigo || userData.id}`;
+  const referralLink = userData.codigo 
+    ? `${window.location.origin}/register?ref=${userData.codigo}` 
+    : "Cargando código...";
 
   return (
     <div style={styles.body}>
+      <Toaster richColors position="top-right" />
       
       {/* HEADER */}
       <div style={styles.topbar}>
@@ -117,7 +127,7 @@ export default function Dashboard() {
         </p>
 
         <p style={styles.text}>
-          ID de Usuario: <span style={styles.id}>{userData.codigo || userData.id}</span>
+          ID de Usuario: <span style={styles.id}>{userData.codigo}</span>
         </p>
 
         <p style={styles.text}>
@@ -166,11 +176,11 @@ export default function Dashboard() {
         {/* STATS */}
         <div style={styles.stats}>
           <div>
-            Saldo Comisiones: <strong>S/ {userData.saldo_calculado?.toFixed(2) || "0.00"}</strong>
+            Saldo Disponible: <strong>S/ {Number(userData.saldo || 0).toFixed(2)}</strong>
           </div>
 
           <div>
-            Pedidos Pendientes: <strong>{userData.pedidos || 0}</strong>
+            Pedidos Pendientes: <strong>{pendingCount}</strong>
           </div>
 
           <div>

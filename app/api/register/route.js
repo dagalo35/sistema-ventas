@@ -66,15 +66,19 @@ export async function POST(req) {
     const user = authData.user
 
     // 🔹 GENERAR CÓDIGO ÚNICO
-    const { count, error: countError } = await supabase
+    const { data: lastUser, error: lastUserError } = await supabase
       .from('users')
-      .select('*', { count: 'exact', head: true })
+      .select('codigo')
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
-    if (countError) {
-      return Response.json({ error: countError.message })
+    if (lastUserError) {
+      return Response.json({ error: lastUserError.message })
     }
 
-    const nuevoNumero = (count || 0) + 1
+    const lastCodeNumber = lastUser?.codigo ? parseInt(lastUser.codigo.split('-')[1]) : 0
+    const nuevoNumero = lastCodeNumber + 1
     const codigoGenerado = `GHC-${String(nuevoNumero).padStart(3, '0')}`
 
     // 🔹 INSERTAR EN TABLA USERS

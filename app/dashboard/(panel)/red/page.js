@@ -44,35 +44,42 @@ export default function Red() {
 
     if (!users) return
 
-    // 🔥 función para construir árbol desde UUID
-    const buildTreeByUUID = (userId) => {
-      const user = users.find(u => u.supabase_id === userId)
+    // 🔥 Optimización: Crear mapas para búsquedas O(1)
+    const userMap = new Map(users.map(u => [u.supabase_id, u]));
+    const childrenMap = new Map();
+    
+    users.forEach(u => {
+      if (u.referido_por_uuid) {
+        const list = childrenMap.get(u.referido_por_uuid) || [];
+        list.push(u);
+        childrenMap.set(u.referido_por_uuid, list);
+      }
+    });
 
-      if (!user) return null
+    const buildTreeByUUID = (userId) => {
+      const user = userMap.get(userId);
+      if (!user) return null;
 
       return {
         name: (user.nombre || "SIN NOMBRE").toUpperCase(),
         attributes: {
-          fecha: user.created_at
-            ? new Date(user.created_at).toLocaleDateString()
-            : "",
+          fecha: user.created_at ? new Date(user.created_at).toLocaleDateString() : "",
           codigo: user.codigo || ""
         },
-        children: users
-          .filter(u => u.referido_por_uuid === userId)
+        children: (childrenMap.get(userId) || [])
           .map(child => buildTreeByUUID(child.supabase_id))
-      }
-    }
+      };
+    };
 
     // 🔥 ADMIN → VE TODA LA RED
     if (me.role === "admin") {
-      const roots = users.filter(u => !u.referido_por_uuid)
+      const roots = users.filter(u => !u.referido_por_uuid);
 
       const fullTree = {
         name: "RED GLOBAL",
         attributes: {},
         children: roots.map(root => buildTreeByUUID(root.supabase_id))
-      }
+      };
 
       setTreeData(fullTree)
       return

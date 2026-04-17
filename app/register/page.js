@@ -1,10 +1,8 @@
 'use client'
 
-export const dynamic = "force-dynamic"
-export const fetchCache = "force-no-store"
-
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast, Toaster } from 'sonner'
 
 export default function Register() {
   const router = useRouter()
@@ -60,7 +58,7 @@ export default function Register() {
 
     // 🔥 VALIDACIÓN BÁSICA
     if (!form.email || !form.password) {
-      alert('Completa los campos obligatorios')
+      toast.warning('Completa los campos obligatorios')
       return
     }
 
@@ -76,14 +74,14 @@ export default function Register() {
       const data = await res.json()
 
       if (data.message) {
-        alert(data.message)
+        toast.success(data.message)
         router.push('/login')
       } else {
-        alert(data.error || 'Error al registrar')
+        toast.error(data.error || 'Error al registrar')
       }
 
     } catch (err) {
-      alert('Error de conexión')
+      toast.error('Error de conexión en el servidor')
     }
 
     setLoading(false)
@@ -91,89 +89,123 @@ export default function Register() {
 
   return (
     <div style={styles.container}>
+      <Toaster richColors position="top-right" />
       <div style={styles.card}>
         <h1 style={styles.title}>Crear cuenta</h1>
         <p style={styles.subtitle}>GHC INTERNATIONAL S.A.C.</p>
 
         <form onSubmit={handleSubmit}>
           <div style={styles.grid}>
-
-            <input placeholder="Nombres"
+            <div>
+              <label htmlFor="nombre" style={styles.label}>Nombres</label>
+              <input id="nombre" placeholder="Nombres"
               value={form.nombre}
               style={styles.input}
               onChange={e => handleChange('nombre', e.target.value)}
-            />
+              />
+            </div>
 
-            <input placeholder="Apellidos"
+            <div>
+              <label htmlFor="apellidos" style={styles.label}>Apellidos</label>
+              <input id="apellidos" placeholder="Apellidos"
               value={form.apellidos}
               style={styles.input}
               onChange={e => handleChange('apellidos', e.target.value)}
-            />
+              />
+            </div>
 
-            <input placeholder="Documento"
+            <div>
+              <label htmlFor="documento" style={styles.label}>Documento</label>
+              <input id="documento" placeholder="Documento"
               value={form.documento}
               style={styles.input}
               onChange={e => handleChange('documento', e.target.value)}
-            />
+              />
+            </div>
 
-            <input placeholder="Celular"
+            <div>
+              <label htmlFor="celular" style={styles.label}>Celular</label>
+              <input id="celular" placeholder="Celular"
               value={form.celular}
               style={styles.input}
               onChange={e => handleChange('celular', e.target.value)}
-            />
+              />
+            </div>
 
-            <input placeholder="País"
+            <div>
+              <label htmlFor="pais" style={styles.label}>País</label>
+              <input id="pais" placeholder="País"
               value={form.pais}
               style={styles.input}
               onChange={e => handleChange('pais', e.target.value)}
-            />
+              />
+            </div>
 
-            <input placeholder="Departamento"
+            <div>
+              <label htmlFor="departamento" style={styles.label}>Departamento</label>
+              <input id="departamento" placeholder="Departamento"
               value={form.departamento}
               style={styles.input}
               onChange={e => handleChange('departamento', e.target.value)}
-            />
+              />
+            </div>
 
-            <input placeholder="Provincia"
-              value={form.provincia}
-              style={styles.input}
-              onChange={e => handleChange('provincia', e.target.value)}
-            />
+            <div>
+              <label htmlFor="provincia" style={styles.label}>Provincia</label>
+              <input id="provincia" placeholder="Provincia"
+                value={form.provincia}
+                style={styles.input}
+                onChange={e => handleChange('provincia', e.target.value)}
+              />
+            </div>
 
-            <input placeholder="Distrito"
-              value={form.distrito}
-              style={styles.input}
-              onChange={e => handleChange('distrito', e.target.value)}
-            />
+            <div>
+              <label htmlFor="distrito" style={styles.label}>Distrito</label>
+              <input id="distrito" placeholder="Distrito"
+                value={form.distrito}
+                style={styles.input}
+                onChange={e => handleChange('distrito', e.target.value)}
+              />
+            </div>
 
-            <input type="email" placeholder="Correo electrónico"
-              value={form.email}
-              style={styles.input}
-              onChange={e => handleChange('email', e.target.value)}
-            />
+            <div>
+              <label htmlFor="email" style={styles.label}>Correo electrónico</label>
+              <input id="email" type="email" placeholder="Correo electrónico"
+                value={form.email}
+                style={styles.input}
+                onChange={e => handleChange('email', e.target.value)}
+              />
+            </div>
 
-            <input type="password" placeholder="Contraseña"
-              value={form.password}
-              style={styles.input}
-              onChange={e => handleChange('password', e.target.value)}
-            />
+            <div>
+              <label htmlFor="password" style={styles.label}>Contraseña</label>
+              <input id="password" type="password" placeholder="Contraseña"
+                value={form.password}
+                style={styles.input}
+                onChange={e => handleChange('password', e.target.value)}
+              />
+            </div>
 
           </div>
 
-          <input placeholder="Dirección completa"
+          <label htmlFor="direccion" style={styles.label}>Dirección completa</label>
+          <input id="direccion" placeholder="Dirección completa"
             value={form.direccion}
             style={styles.inputFull}
             onChange={e => handleChange('direccion', e.target.value)}
           />
 
-          <input placeholder="Referencia"
+          <label htmlFor="referencia" style={styles.label}>Referencia</label>
+          <input id="referencia" placeholder="Referencia"
             value={form.referencia}
             style={styles.inputFull}
             onChange={e => handleChange('referencia', e.target.value)}
           />
 
           {/* 🔥 CAMPO REFERIDO */}
+          <label htmlFor="sponsor" style={styles.label}>Código de patrocinador</label>
           <input
+            id="sponsor"
             value={form.sponsor}
             placeholder="Código de patrocinador"
             style={{
@@ -225,6 +257,14 @@ const styles = {
     color: '#6b7280',
     marginBottom: 20,
     textAlign: 'center'
+  },
+
+  label: {
+    display: 'block',
+    fontSize: '11px',
+    color: '#6b7280',
+    marginBottom: '2px',
+    marginLeft: '5px'
   },
 
   grid: {

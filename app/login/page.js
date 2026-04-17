@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
+import { toast, Toaster } from 'sonner'
 
 // 🔥 cliente supabase
 const supabase = createClient(
@@ -33,7 +34,7 @@ export default function Login() {
     setLoading(false)
 
     if (error) {
-      alert(error.message)
+      toast.error(error.message)
       return
     }
 
@@ -43,7 +44,7 @@ export default function Login() {
   // 🔥 RECUPERAR CONTRASEÑA
   const handleResetPassword = async () => {
     if (!form.email) {
-      alert('Ingresa tu correo primero')
+      toast.warning('Ingresa tu correo primero')
       return
     }
 
@@ -52,21 +53,24 @@ export default function Login() {
     })
 
     if (error) {
-      alert(error.message)
+      toast.error(error.message)
     } else {
-      alert('Revisa tu correo para restablecer tu contraseña')
+      toast.success('Revisa tu correo para restablecer tu contraseña')
     }
   }
 
   return (
     <div style={styles.body}>
+      <Toaster richColors position="top-right" />
       <div style={styles.container}>
         <h1 style={styles.title}>Bienvenido</h1>
         <p style={styles.subtitle}>GHC INTERNATIONAL S.A.C.</p>
 
         <form onSubmit={handleSubmit}>
           <div style={styles.inputGroup}>
+            <label htmlFor="email" style={styles.label}>Correo</label>
             <input
+              id="email"
               type="email"
               placeholder="Correo electrónico"
               required
@@ -78,7 +82,9 @@ export default function Login() {
           </div>
 
           <div style={styles.inputGroup}>
+            <label htmlFor="password" style={styles.label}>Contraseña</label>
             <input
+              id="password"
               type="password"
               placeholder="Contraseña"
               required
@@ -144,6 +150,14 @@ const styles = {
     fontSize: '14px',
     color: '#6b7280',
     marginBottom: '25px'
+  },
+
+  label: {
+    display: 'block',
+    textAlign: 'left',
+    fontSize: '12px',
+    marginBottom: '5px',
+    color: '#374151'
   },
 
   inputGroup: {
