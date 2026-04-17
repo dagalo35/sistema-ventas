@@ -115,6 +115,19 @@ export async function POST(req) {
         .insert(comisionesAInsertar)
 
       if (insertError) console.error("Error insertando comisiones:", insertError)
+
+      // 🔥 ACTUALIZAR EL SALDO REAL EN LA TABLA USERS
+      for (const com of comisionesAInsertar) {
+        const { data: userDB } = await supabase
+          .from("users")
+          .select("saldo")
+          .eq("supabase_id", com.user_id)
+          .single()
+        
+        const saldoActual = parseFloat(userDB?.saldo || 0)
+        const nuevoSaldo = (saldoActual + com.monto).toFixed(2)
+        await supabase.from("users").update({ saldo: nuevoSaldo }).eq("supabase_id", com.user_id)
+      }
     }
 
     return NextResponse.json({ ok: true })

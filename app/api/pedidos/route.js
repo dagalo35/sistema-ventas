@@ -111,10 +111,10 @@ export async function PUT(req) {
 
     const { pedido_id, estado } = await req.json()
 
-    // 1. Obtener estado actual y datos del usuario antes de actualizar
+    // 1. Obtener estado actual, datos del usuario y productos antes de actualizar
     const { data: pedidoPrevio } = await supabase
       .from('pedidos')
-      .select('estado, user_id, total')
+      .select('estado, user_id, total, productos')
       .eq('id', pedido_id)
       .single()
 
@@ -137,11 +137,14 @@ export async function PUT(req) {
 
       const comisionesAInsertar = []
       
-      // A. COMISIÓN NIVEL 0 (Compra Propia) - S/ 10.00
+      // Obtenemos la cantidad real de items del arreglo ["PROD1", "PROD2", ...]
+      const cantidadItems = Array.isArray(pedidoPrevio.productos) ? pedidoPrevio.productos.length : 0
+
+      // A. COMISIÓN NIVEL 0 (Compra Propia) - S/ 5.00 por cada producto
       comisionesAInsertar.push({
         user_id: pedidoPrevio.user_id,
         from_user: pedidoPrevio.user_id,
-        monto: 10.00,
+        monto: 5.00 * cantidadItems, // Se multiplica por la cantidad de items en el pedido
         tipo: 'Compra propia',
         nivel: 0,
         pedido_id: pedido_id
@@ -169,7 +172,7 @@ export async function PUT(req) {
           comisionesAInsertar.push({
             user_id: sponsor.supabase_id,
             from_user: pedidoPrevio.user_id,
-            monto: nivel.monto,
+            monto: nivel.monto * cantidadItems, // Multiplicación dinámica por cantidad de productos
             tipo: `Comisión Red - ${nivel.desc}`,
             nivel: parseInt(nivel.desc.split(' ')[1]),
             pedido_id: pedido_id
@@ -185,8 +188,9 @@ export async function PUT(req) {
         await supabase.from('comisiones').insert(comisionesAInsertar)
 
         for (const com of comisionesAInsertar) {
-          const { data: targetUser } = await supabase.from('users').select('saldo').eq('supabase_id', com.user_id).single()
-          const nuevoSaldo = Number(targetUser?.saldo || 0) + com.monto
+          const { data: userRecord } = await supabase.from('users').select('saldo').eq('supabase_id', com.user_id).single()
+          const saldoActual = parseFloat(userRecord?.saldo || 0)
+          const nuevoSaldo = (saldoActual + com.monto).toFixed(2)
           
           const updateData = { saldo: nuevoSaldo }
           if (com.nivel === 0) {

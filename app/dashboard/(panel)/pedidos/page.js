@@ -250,6 +250,10 @@ export default function Pedidos() {
       if (!res.ok) throw new Error(data.error || "Error al actualizar estado")
       
       getPedidos()
+      // Si se aprobó, recargar para actualizar el saldo en el layout/dashboard
+      if (nuevoEstado === 'aprobado') {
+        setTimeout(() => window.location.reload(), 1000)
+      }
       return data
     })()
 
