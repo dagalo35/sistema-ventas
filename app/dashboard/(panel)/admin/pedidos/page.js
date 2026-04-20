@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { createClient } from "@supabase/supabase-js"
 import { toast, Toaster } from "sonner"
 
@@ -10,9 +11,10 @@ const supabase = createClient(
 )
 
 export default function AdminPedidos() {
-
   const [pedidos, setPedidos] = useState([])
   const [loading, setLoading] = useState(true)
+  const [userData, setUserData] = useState(null)
+  const router = useRouter()
 
   const [filtroEstado, setFiltroEstado] = useState("todos")
   const [fechaInicio, setFechaInicio] = useState("")
@@ -20,12 +22,35 @@ export default function AdminPedidos() {
 
   const [viewImg, setViewImg] = useState(null)
 
+  const init = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const authUser = session?.user
+
+    if (!authUser) {
+      router.push("/login")
+      return
+    }
+
+    const { data: user } = await supabase
+      .from("users")
+      .select("*")
+      .eq("supabase_id", authUser.id)
+      .single()
+
+    if (!user || user.role !== "admin") {
+      router.push("/dashboard")
+      return
+    }
+
+    setUserData(user)
+    await getPedidos()
+  }, [router])
+
   useEffect(() => {
-    getPedidos()
-  }, [])
+    init()
+  }, [init])
 
   async function getPedidos() {
-
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return
 
@@ -293,7 +318,8 @@ export default function AdminPedidos() {
 const styles = {
   history: {
     display: "grid",
-    gap: 20
+    gap: 20,
+    overflow: "visible" // Asegura que el contenedor de la lista no recorte
   },
   filterContainer: {
     display: "flex",
@@ -348,7 +374,10 @@ const styles = {
     padding: 20,
     borderRadius: 12,
     boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-    borderLeft: "6px solid #e5e7eb"
+    borderLeft: "6px solid #e5e7eb",
+    position: "relative", // Permite que el z-index funcione
+    overflow: "visible",  // Fundamental para que el select no se recorte
+    zIndex: 1             // Valor base
   },
   overlay: {
     position: "fixed",
@@ -394,7 +423,8 @@ const styles = {
     fontSize: "12px",
     outline: "none",
     cursor: "pointer",
-    background: "#fff"
+    background: "#fff",
+    position: "relative"
   },
   gridInfo: {
     display: "grid",

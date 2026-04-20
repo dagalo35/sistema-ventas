@@ -22,11 +22,13 @@ export async function GET(req) {
     const { data: userDB } = await supabase.from('users').select('role').eq('supabase_id', user.id).single()
     if (userDB?.role !== 'admin') return Response.json({ error: 'Prohibido: Se requiere rol de administrador' }, { status: 403 })
 
-    const { data, error } = await supabase
+    // 🔍 Buscamos los retiros con los datos del usuario. 
+    // Si la tabla sigue vacía, asegúrate de que la relación en la DB se llame 'user_id'
+    const { data: retiros, error } = await supabase
       .from('retiros')
       .select(`
         *,
-        users:users!user_id (
+        users:user_id (
           nombre,
           apellidos,
           codigo
@@ -34,8 +36,12 @@ export async function GET(req) {
       `)
       .order('created_at', { ascending: false })
 
-    if (error) throw error
-    return Response.json(data)
+    if (error) {
+      console.error("Error de Supabase en GET /api/retiros:", error)
+      throw error
+    }
+    
+    return Response.json(retiros || [])
 
   } catch (err) {
     console.error("Error en GET /api/retiros:", err)
