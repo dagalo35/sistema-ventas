@@ -21,28 +21,31 @@ export default function Red() {
   }, [])
 
   const loadTree = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: authData, error: authError } = await supabase.auth.getUser()
+    const user = authData?.user
 
-    if (!user) {
+    if (authError || !user) {
       router.push("/login")
       return
     }
 
-    // 🔹 obtener usuario actual
-    const { data: me } = await supabase
-      .from("users")
-      .select("*")
-      .eq("supabase_id", user.id)
-      .single()
+    // 🔹 Obtener datos de la red mediante la API interna (usa service_role para saltar RLS)
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch('/api/red', {
+      headers: {
+        'Authorization': `Bearer ${session?.access_token}`
+      }
+    })
 
-    if (!me) return
+    if (!res.ok) {
+      console.error("Error al cargar la red")
+      return
+    }
 
-    // 🔹 obtener todos los usuarios
-    const { data: users } = await supabase
-      .from("users")
-      .select("*")
+    const users = await res.json()
+    const me = users.find(u => u.supabase_id === user.id)
 
-    if (!users) return
+    if (!me || !users) return
 
     // 🔥 Optimización: Crear mapas para búsquedas O(1)
     const userMap = new Map(users.map(u => [u.supabase_id, u]));

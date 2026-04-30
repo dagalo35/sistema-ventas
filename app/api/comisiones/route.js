@@ -1,24 +1,18 @@
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js'
 
-// Helper para obtener usuario autenticado
-async function getAuth(req) {
-  try {
-    const token = req.headers.get('authorization')?.replace('Bearer ', '')
-    if (!token) return null
-    const { data, error } = await supabase.auth.getUser(token)
-    if (error || !data?.user) return null
-    return data.user
-  } catch (e) {
-    return null
-  }
-}
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAdmin = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY)
 
 export async function GET(req) {
   try {
-    const user = await getAuth(req)
-    if (!user) return Response.json({ error: 'No autorizado' }, { status: 401 })
+    const authHeader = req.headers.get('authorization')
+    const token = authHeader?.replace('Bearer ', '')
+    if (!token) return Response.json({ error: 'Token faltante' }, { status: 401 })
 
-    const { data: userDB, error: userError } = await supabase
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
+    if (authError || !user) return Response.json({ error: 'No autorizado' }, { status: 401 })
+
+    const { data: userDB, error: userError } = await supabaseAdmin
       .from('users')
       .select('role, supabase_id')
       .eq('supabase_id', user.id)
@@ -32,15 +26,15 @@ export async function GET(req) {
 
     if (userDB.role === 'admin') {
       // 🔥 ADMIN: Ve todo el historial con beneficiario y origen
-      query = supabase.from('comisiones').select(`
+      query = supabaseAdmin.from('comisiones').select(`
         *,
-        beneficiary:users!user_id (
+        beneficiary:user_id (
           codigo,
           nombre,
           apellidos,
           role
         ),
-        origin:users!from_user (
+        origin:from_user (
           codigo,
           nombre,
           apellidos
@@ -48,10 +42,10 @@ export async function GET(req) {
       `)
     } else {
       // 👤 USUARIO: Sus ganancias con info de quién la generó
-      query = supabase.from('comisiones')
+      query = supabaseAdmin.from('comisiones')
         .select(`
           *,
-          origin:users!from_user (
+          origin:from_user (
             codigo,
             nombre,
             apellidos
@@ -64,9 +58,10 @@ export async function GET(req) {
 
     if (error) throw error
 
-    // Filtrar para que no figuren comisiones donde el beneficiario es un administrador
-    const filteredData = data?.filter(c => c.beneficiary?.role !== 'admin') || data || []
-    return Response.json(filteredData)
+    // Filtramos las comisiones donde el beneficiario (user_id) es un administrador.
+    // Esto asegura que estas comisiones no se muestren ni se cuenten en el frontend.
+    const filteredData = data?.filter(c => c.beneficiary?.role?.toLowerCase() !== 'admin') || [];
+    return Response.json(filteredData);
   } catch (err) {
     console.error("Error en API Comisiones:", err)
     return Response.json({ error: 'Error interno del servidor' }, { status: 500 })

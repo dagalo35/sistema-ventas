@@ -14,7 +14,6 @@ export default function ComisionesPage() {
   const [comisiones, setComisiones] = useState([])
   const [loading, setLoading] = useState(true)
   const [role, setRole] = useState(null)
-  const [saldo, setSaldo] = useState(0)
   const [retiros, setRetiros] = useState([])
   
   // Modal Retiro
@@ -49,12 +48,11 @@ export default function ComisionesPage() {
     // 1. Obtener datos del usuario
     const { data: userDB } = await supabase
       .from('users')
-      .select('role, saldo')
+      .select('role')
       .eq('supabase_id', session.user.id)
       .single()
     
     setRole(userDB?.role)
-    setSaldo(parseFloat(userDB?.saldo || 0))
 
     // 2. Obtener Comisiones (vía API)
     const resCom = await fetch('/api/comisiones', {
@@ -81,10 +79,17 @@ export default function ComisionesPage() {
 
   async function solicitarRetiro() {
     const monto = parseFloat(montoRetiro)
-    const enProceso = retiros.filter(r => r.estado === 'pendiente').reduce((acc, r) => acc + parseFloat(r.monto || 0), 0)
+    
+    // 🔥 CÁLCULO DE SALDO DISPONIBLE DEL MES (Igual que en el render)
+    const now = new Date()
+    const inicioMes = new Date(now.getFullYear(), now.getMonth(), 1)
+    const totalMes = comisiones?.filter(c => new Date(c.created_at) >= inicioMes).reduce((a, b) => a + parseFloat(b.monto || 0), 0) || 0
+    const totalRetiradoMes = retiros?.filter(r => new Date(r.created_at) >= inicioMes).reduce((a, b) => a + parseFloat(b.monto || 0), 0) || 0
+    
+    const saldoDisponibleMes = totalMes - totalRetiradoMes
 
     if (isNaN(monto) || monto <= 0) return toast.error("Monto inválido")
-    if (monto > (saldo - enProceso)) return toast.error("Saldo insuficiente considerando tus solicitudes en proceso")
+    if (monto > saldoDisponibleMes) return toast.error("Saldo insuficiente para este mes")
     if (monto < 50) return toast.error("El mínimo es S/ 50.00")
     if (!banco || !numeroCuenta || !titular) return toast.warning("Completa los datos bancarios")
 
@@ -121,6 +126,13 @@ export default function ComisionesPage() {
   const now = new Date()
   const inicioMes = new Date(now.getFullYear(), now.getMonth(), 1)
   const totalMes = comisiones?.filter(c => new Date(c.created_at) >= inicioMes).reduce((a, b) => a + parseFloat(b.monto || 0), 0) || 0
+  
+  // 🔥 Retiros totales del mes (independiente de si están pendientes o completados)
+  const totalRetiradoMes = retiros?.filter(r => new Date(r.created_at) >= inicioMes).reduce((a, b) => a + parseFloat(b.monto || 0), 0) || 0
+  
+  // 🔥 SALDO DISPONIBLE: Lo que se ganó este mes menos lo que ya se pidió retirar este mes
+  const saldoDinamico = totalMes - totalRetiradoMes
+
   const totalPropia = comisiones?.filter(c => c.nivel === 0).reduce((a, b) => a + parseFloat(b.monto || 0), 0) || 0
   const totalRed = comisiones?.filter(c => c.nivel > 0).reduce((a, b) => a + parseFloat(b.monto || 0), 0) || 0
   const enProceso = retiros.filter(r => r.estado === 'pendiente').reduce((a, b) => a + parseFloat(b.monto || 0), 0)
@@ -177,7 +189,7 @@ export default function ComisionesPage() {
           <>
             <div style={{ ...styles.summaryCard, border: '2px solid #16a34a' }}>
               <p style={styles.summaryLabel}>Saldo a Retirar</p>
-              <h2 style={{ ...styles.summaryValue, color: '#16a34a' }}>S/ {saldo.toFixed(2)}</h2>
+              <h2 style={{ ...styles.summaryValue, color: '#16a34a' }}>S/ {saldoDinamico.toFixed(2)}</h2>
             </div>
             <div style={{ ...styles.summaryCard, background: '#fffbeb' }}>
               <p style={styles.summaryLabel}>Monto en Proceso</p>

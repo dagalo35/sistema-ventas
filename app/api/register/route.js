@@ -7,6 +7,11 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
 
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
 export async function POST(req) {
   try {
     const body = await req.json()
@@ -31,7 +36,7 @@ export async function POST(req) {
     let sponsorUUID = null
 
     if (sponsor) {
-      const { data: sponsorUser, error: sponsorError } = await supabase
+      const { data: sponsorUser, error: sponsorError } = await supabaseAdmin
         .from('users')
         .select('supabase_id')
         .eq('codigo', sponsor)
@@ -66,7 +71,7 @@ export async function POST(req) {
     const user = authData.user
 
     // 🔹 GENERAR CÓDIGO ÚNICO
-    const { data: lastUser, error: lastUserError } = await supabase
+    const { data: lastUser, error: lastUserError } = await supabaseAdmin
       .from('users')
       .select('codigo')
       .order('id', { ascending: false })
@@ -77,12 +82,14 @@ export async function POST(req) {
       return Response.json({ error: lastUserError.message })
     }
 
+
+    // Peligro: Lógica propensa a condiciones de carrera (Race Conditions)
     const lastCodeNumber = lastUser?.codigo ? parseInt(lastUser.codigo.split('-')[1]) : 0
     const nuevoNumero = lastCodeNumber + 1
     const codigoGenerado = `GHC-${String(nuevoNumero).padStart(3, '0')}`
 
     // 🔹 INSERTAR EN TABLA USERS
-    const { error: dbError } = await supabase
+    const { error: dbError } = await supabaseAdmin
       .from('users')
       .insert({
         supabase_id: user.id,
@@ -98,27 +105,15 @@ export async function POST(req) {
         email,
         celular,
         codigo: codigoGenerado,
-
-        // 🔥 AQUÍ ESTÁ LA CORRECCIÓN CLAVE
-        referido_por: sponsor || null,
-        referido_por_uuid: sponsorUUID,
-
-        activo: true
+        referido_por_uuid: sponsorUUID
       })
 
     if (dbError) {
       return Response.json({ error: dbError.message })
     }
 
-    return Response.json({
-      message: 'Usuario registrado correctamente',
-      codigo: codigoGenerado
-    })
-
-  } catch (err) {
-    console.error(err)
-    return Response.json({
-      error: 'Error del servidor'
-    })
+    return Response.json({ ok: true, user: authData.user })
+  } catch (error) {
+    return Response.json({ error: error.message }, { status: 500 })
   }
 }

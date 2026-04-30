@@ -11,6 +11,7 @@ export async function POST(req) {
   try {
     const body = await req.json()
     const supabase = getSupabase()
+    const supabaseAdmin = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY)
     
     // Obtener el token del header Authorization
     const authHeader = req.headers.get('Authorization')
@@ -20,8 +21,8 @@ export async function POST(req) {
     if (authError || !user) return Response.json({ error: 'No autorizado' }, { status: 401 })
 
 
-    // Guardar pedido en Supabase
-    const { data: newPedido, error } = await supabase
+    // Guardar pedido en Supabase usando el cliente Admin para saltar RLS
+    const { data: newPedido, error } = await supabaseAdmin
       .from('pedidos')
       .insert([{
         user_id: user.id,
@@ -48,6 +49,7 @@ export async function POST(req) {
 export async function GET(req) {
   try {
     const supabase = getSupabase()
+    const supabaseAdmin = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY)
     const authHeader = req.headers.get('Authorization')
     const token = authHeader?.split(' ')[1]
 
@@ -55,17 +57,17 @@ export async function GET(req) {
     if (!user) return Response.json({ error: 'No autorizado' }, { status: 401 })
 
     // 🛡️ Verificar rol del usuario
-    const { data: userDB } = await supabase
+    const { data: userDB } = await supabaseAdmin
       .from('users')
       .select('role')
       .eq('supabase_id', user.id)
       .single()
 
     // 🔍 Construir consulta
-    // Nota: Usamos la relación con 'users' para obtener datos del cliente (nombre, código)
-    let query = supabase.from('pedidos').select(`
+    // Usamos el cliente admin para saltar RLS y obtener los datos con sus joins
+    let query = supabaseAdmin.from('pedidos').select(`
       *,
-      users:users!user_id (
+      users:user_id (
         nombre,
         apellidos,
         codigo
@@ -95,31 +97,34 @@ export async function PUT(req) {
     const authHeader = req.headers.get('Authorization')
     const token = authHeader?.split(' ')[1]
 
+    // Usamos SERVICE_ROLE_KEY para que el servidor pueda validar roles sin restricciones
+    const supabaseAdmin = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY)
+
     const { data: { user } } = await supabase.auth.getUser(token)
     if (!user) return Response.json({ error: 'No autorizado' }, { status: 401 })
 
     // 🛡️ Solo el ADMIN puede cambiar el estado de un pedido
-    const { data: adminCheck } = await supabase
+    const { data: adminCheck } = await supabaseAdmin
       .from('users')
       .select('role')
       .eq('supabase_id', user.id)
       .single()
 
-    if (adminCheck?.role !== 'admin') {
+    if (adminCheck?.role?.toLowerCase() !== 'admin') {
       return Response.json({ error: 'Acceso denegado' }, { status: 403 })
     }
 
     const { pedido_id, estado } = await req.json()
 
     // 1. Obtener estado actual, datos del usuario y productos antes de actualizar
-    const { data: pedidoPrevio } = await supabase
+    const { data: pedidoPrevio } = await supabaseAdmin
       .from('pedidos')
       .select('estado, user_id, total, productos')
       .eq('id', pedido_id)
       .single()
 
     // 2. Ejecutar la actualización del estado
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('pedidos')
       .update({ estado })
       .eq('id', pedido_id)
@@ -129,7 +134,7 @@ export async function PUT(req) {
     // 🔥 LÓGICA DE COMISIONES: Si el estado cambia a 'aprobado' por primera vez
     if (estado === 'aprobado' && pedidoPrevio?.estado !== 'aprobado') {
       // 1. Obtener datos del comprador (para conocer a su patrocinador)
-      const { data: comprador } = await supabase
+      const { data: comprador } = await supabaseAdmin
         .from('users')
         .select('referido_por_uuid, saldo, role')
         .eq('supabase_id', pedidoPrevio.user_id)
@@ -144,7 +149,7 @@ export async function PUT(req) {
 
       // A. COMISIÓN NIVEL 0 (Compra Propia) - Requiere MAGVIT17 y COLLAGEM en el mes
       if (comprador && comprador.role !== 'admin') {
-        const { data: comprasMesComprador } = await supabase
+        const { data: comprasMesComprador } = await supabaseAdmin
           .from('pedidos')
           .select('productos')
           .eq('user_id', pedidoPrevio.user_id)
@@ -157,10 +162,10 @@ export async function PUT(req) {
           ...(comprasMesComprador?.flatMap(p => p.productos) || [])
         ]
 
-        const tieneMagvit = productosMesTotal.includes('MAGVIT17')
-        const tieneCollagem = productosMesTotal.includes('COLLAGEM')
+        // Para pruebas: califica si tiene al menos un producto
+        const calificaNivel0 = productosMesTotal.length > 0;
 
-        if (tieneMagvit && tieneCollagem) {
+        if (calificaNivel0) {
           comisionesAInsertar.push({
             user_id: pedidoPrevio.user_id,
             from_user: pedidoPrevio.user_id,
@@ -184,27 +189,27 @@ export async function PUT(req) {
       for (const nivel of configuracionNiveles) {
         if (!actualSponsorUUID) break
 
-        const { data: sponsor } = await supabase
+        const { data: sponsor } = await supabaseAdmin
           .from("users")
           .select("supabase_id, referido_por_uuid, activo, role")
           .eq("supabase_id", actualSponsorUUID)
           .single()
 
         if (sponsor) {
-          let calificado = false
+          // Si es admin califica auto, si es user debe estar activo y tener sus compras
+          let calificado = sponsor.role === 'admin';
           
-          if (sponsor.role !== 'admin' && sponsor.activo) {
-            const { data: comprasSponsor } = await supabase
+          if (!calificado && sponsor.activo) {
+            const { data: comprasSponsor } = await supabaseAdmin
               .from('pedidos')
               .select('productos')
               .eq('user_id', sponsor.supabase_id)
               .eq('estado', 'aprobado')
               .gte('created_at', inicioMes)
 
-            const prodsSponsor = comprasSponsor?.flatMap(p => p.productos) || []
-            if (prodsSponsor.includes('MAGVIT17') && prodsSponsor.includes('COLLAGEM')) {
-              calificado = true
-            }
+            const prodsSponsor = comprasSponsor?.flatMap(p => p.productos) || [];
+            // Igualamos la regla: califica si tiene al menos una compra aprobada este mes
+            if (prodsSponsor.length > 0) calificado = true;
           }
 
           if (calificado) {
@@ -227,19 +232,18 @@ export async function PUT(req) {
 
       // 2. Insertar registros y actualizar saldos
       if (comisionesAInsertar.length > 0) {
-        await supabase.from('comisiones').insert(comisionesAInsertar)
+        await supabaseAdmin.from('comisiones').insert(comisionesAInsertar)
 
         for (const com of comisionesAInsertar) {
-          const { data: userRecord } = await supabase.from('users').select('saldo').eq('supabase_id', com.user_id).single()
-          const saldoActual = parseFloat(userRecord?.saldo || 0)
-          const nuevoSaldo = (saldoActual + com.monto).toFixed(2)
+          // Usamos la RPC para evitar condiciones de carrera y asegurar atomicidad
+          await supabaseAdmin.rpc('increment_saldo', { user_uuid: com.user_id, amount: com.monto })
           
-          const updateData = { saldo: nuevoSaldo }
           if (com.nivel === 0) {
-            updateData.activo_comisiones = true
-            updateData.ultimo_pago = new Date().toISOString()
+            await supabaseAdmin.from('users').update({
+              activo_comisiones: true,
+              ultimo_pago: new Date().toISOString()
+            }).eq('supabase_id', com.user_id)
           }
-          await supabase.from('users').update(updateData).eq('supabase_id', com.user_id)
         }
       }
     }

@@ -15,18 +15,25 @@ export async function POST(req) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 })
     }
 
+    // Usamos el cliente admin para verificar el rol del usuario en la DB sin interferencia de RLS
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    )
+
     const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''))
     if (authError || !user) {
       return NextResponse.json({ error: "Sesión inválida" }, { status: 401 })
     }
 
-    const { data: adminUser } = await supabase
+    const { data: adminUser } = await supabaseAdmin
       .from("users")
       .select("role")
       .eq("supabase_id", user.id)
       .single()
 
-    if (adminUser?.role !== 'admin') {
+    // Verificamos en minúsculas para mayor seguridad
+    if (adminUser?.role?.toLowerCase() !== 'admin') {
       return NextResponse.json({ error: "Prohibido: Se requiere rol de administrador" }, { status: 403 })
     }
 
@@ -42,7 +49,7 @@ export async function POST(req) {
     }
 
     // 🔍 VERIFICAR ESTADO ACTUAL
-    const { data: targetUser, error: fetchError } = await supabase
+    const { data: targetUser, error: fetchError } = await supabaseAdmin
       .from("users")
       .select("activo, email, nombre, referido_por_uuid")
       .eq("supabase_id", user_id)
@@ -57,7 +64,7 @@ export async function POST(req) {
     }
 
     // 🔥 ACTIVAR USUARIO
-    const { data: userData, error: updateError } = await supabase
+    const { data: userData, error: updateError } = await supabaseAdmin
       .from("users")
       .update({ activo: true })
       .eq("supabase_id", user_id)
@@ -74,9 +81,9 @@ export async function POST(req) {
     // 🔥 REPARTO DE COMISIONES MULTINIVEL (Ejemplo 3 Niveles)
     // Nivel 1: S/ 20, Nivel 2: S/ 10, Nivel 3: S/ 5
     const niveles = [
-      { monto: 20, desc: "Nivel 1" },
-      { monto: 10, desc: "Nivel 2" },
-      { monto: 5,  desc: "Nivel 3" }
+      { monto: 20, desc: "Nivel 1", n: 1 },
+      { monto: 10, desc: "Nivel 2", n: 2 },
+      { monto: 5,  desc: "Nivel 3", n: 3 }
     ]
 
     let actualSponsorUUID = targetUser.referido_por_uuid
@@ -86,7 +93,7 @@ export async function POST(req) {
       if (!actualSponsorUUID) break // Si no hay más patrocinadores arriba, terminamos
 
       // Obtener datos del patrocinador actual para saber quién es SU patrocinador (para el siguiente nivel)
-      const { data: sponsorData } = await supabase
+      const { data: sponsorData } = await supabaseAdmin
         .from("users")
         .select("supabase_id, referido_por_uuid, activo, role")
         .eq("supabase_id", actualSponsorUUID)
@@ -99,7 +106,8 @@ export async function POST(req) {
             user_id: sponsorData.supabase_id, // El que recibe el dinero
             from_user: targetUser.supabase_id, // El usuario que se activó (origen)
             monto: nivel.monto,
-            tipo: `Bono Activación - ${nivel.desc}`
+            tipo: `Bono Activación - ${nivel.desc}`,
+            nivel: nivel.n
           })
         }
         // Subimos al siguiente nivel
@@ -110,23 +118,20 @@ export async function POST(req) {
     }
 
     if (comisionesAInsertar.length > 0) {
-      const { error: insertError } = await supabase
+      // Insertar todas las comisiones en un solo paso
+      const { error: insertError } = await supabaseAdmin
         .from("comisiones")
         .insert(comisionesAInsertar)
 
       if (insertError) console.error("Error insertando comisiones:", insertError)
 
-      // 🔥 ACTUALIZAR EL SALDO REAL EN LA TABLA USERS
+      // NOTA: Lo ideal aquí es usar una función RPC para que esto sea atómico.
+      // Como mejora temporal, actualizamos los saldos.
       for (const com of comisionesAInsertar) {
-        const { data: userDB } = await supabase
-          .from("users")
-          .select("saldo")
-          .eq("supabase_id", com.user_id)
-          .single()
-        
-        const saldoActual = parseFloat(userDB?.saldo || 0)
-        const nuevoSaldo = (saldoActual + com.monto).toFixed(2)
-        await supabase.from("users").update({ saldo: nuevoSaldo }).eq("supabase_id", com.user_id)
+        // Usamos una operación de incremento relativa para evitar problemas de concurrencia
+        // PostgreSQL permite: update users set saldo = saldo + increment ...
+        // Con la API de Supabase:
+        await supabaseAdmin.rpc('increment_saldo', { user_uuid: com.user_id, amount: com.monto })
       }
     }
 

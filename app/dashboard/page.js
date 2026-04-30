@@ -13,6 +13,7 @@ const supabase = createClient(
 export default function Dashboard() {
   const [userData, setUserData] = useState(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [saldoARetirar, setSaldoARetirar] = useState(0);
   const [pendingWithdrawal, setPendingWithdrawal] = useState(0);
   const [gananciaPropia, setGananciaPropia] = useState(0);
   const [gananciaRed, setGananciaRed] = useState(0);
@@ -23,66 +24,97 @@ export default function Dashboard() {
   }, []);
 
   async function getUser() {
-    const { data: { user } } = await supabase.auth.getUser();
+    try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      const user = authData?.user;
 
-    if (!user) {
-      router.push("/login");
-      return;
+      if (authError || !user) {
+        router.push("/login");
+        return;
+      }
+
+      // 🔥 1. Traer datos base del usuario
+      const { data: userInfo, error: userError } = await supabase
+        .from("users")
+        .select("*")
+        .eq("supabase_id", user.id)
+        .maybeSingle();
+
+      if (userError) throw new Error(`Error en tabla users: ${userError.message}`);
+
+      if (!userInfo) {
+        console.error("Perfil no encontrado en tabla 'users'. UID:", user.id);
+        toast.error("No se encontró tu perfil de usuario.");
+        router.push("/login");
+        return;
+      }
+
+      // Una vez tenemos al usuario, salimos del estado de "Cargando..."
+      setUserData(userInfo);
+
+      // 🔥 2. Configurar consulta de pedidos (Sincronizado con estado 'pendiente')
+      let pendingQuery = supabase
+        .from("pedidos")
+        .select("*", { count: 'exact', head: true })
+        .eq("estado", "enviado");
+
+      if (userInfo.role !== "admin") {
+        pendingQuery = pendingQuery.eq("user_id", user.id);
+      }
+
+      // 🔥 3. Ejecutar estadísticas sin bloquear el renderizado principal
+      try {
+        const [resPedidos, resRetiros, resComisiones] = await Promise.all([
+          pendingQuery,
+          supabase.from("retiros").select("monto, created_at, estado").eq("user_id", user.id),
+          supabase.from("comisiones").select("monto, nivel, created_at").eq("user_id", user.id)
+        ]);
+
+        // Procesar Pedidos
+        if (resPedidos.error) console.warn("Error pedidos:", resPedidos.error.message);
+        else setPendingCount(resPedidos.count || 0);
+
+        const now = new Date();
+        const inicioMes = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        // Procesar Retiros (Monto en Proceso = todos los pendientes históricos)
+        const rets = resRetiros.data || [];
+        if (resRetiros.error) console.warn("Error retiros:", resRetiros.error.message);
+        
+        const totalPending = rets.filter(r => r.estado === 'pendiente').reduce(
+          (acc, r) => acc + parseFloat(r.monto || 0), 
+          0
+        );
+        setPendingWithdrawal(totalPending);
+
+        const totalRetiradoMes = rets.filter(r => new Date(r.created_at) >= inicioMes).reduce((acc, r) => acc + parseFloat(r.monto || 0), 0);
+
+        // Procesar Comisiones
+        if (resComisiones.error) console.warn("Error comisiones:", resComisiones.error.message);
+        const coms = resComisiones.data || [];
+        const propia = coms
+          .filter(c => c.nivel === 0)
+          .reduce((acc, c) => acc + parseFloat(c.monto || 0), 0);
+        const red = coms
+          .filter(c => c.nivel > 0)
+          .reduce((acc, c) => acc + parseFloat(c.monto || 0), 0);
+
+        setGananciaPropia(propia);
+        setGananciaRed(red);
+
+        // 🔥 CALCULO SALDO DINÁMICO (Igual que en Comisiones)
+        const totalMes = coms.filter(c => new Date(c.created_at) >= inicioMes).reduce((acc, c) => acc + parseFloat(c.monto || 0), 0);
+        setSaldoARetirar(totalMes - totalRetiradoMes);
+
+      } catch (statsErr) {
+        console.error("Error cargando estadísticas secundarias:", statsErr.message);
+      }
+
+    } catch (err) {
+      console.error("Error crítico en Dashboard:", err.message || err);
+      toast.error("Error al cargar la información.");
+      setUserData({ nombre: "Error", role: "error" }); // Liberar UI
     }
-
-    // 🔥 TRAER USUARIO (Usamos el saldo de la tabla users para mayor consistencia)
-    const { data: userInfo, error } = await supabase
-      .from("users")
-      .select("*")
-      .eq("supabase_id", user.id)
-      .maybeSingle();
-
-    if (error || !userInfo) {
-      console.error("Error al cargar datos del usuario:", error);
-      return;
-    }
-
-    setUserData(userInfo);
-
-    // 🔥 CONTAR PEDIDOS PENDIENTES (Admin ve total red, Usuario solo los suyos)
-    let pendingQuery = supabase
-      .from("pedidos")
-      .select("*", { count: 'exact', head: true })
-      .eq("estado", "enviado");
-
-    if (userInfo.role !== "admin") {
-      pendingQuery = pendingQuery.eq("user_id", user.id);
-    }
-
-    const { count, error: countError } = await pendingQuery;
-
-    if (countError) {
-      console.error("Error al contar pedidos:", countError);
-    } else {
-      setPendingCount(count || 0);
-    }
-
-    // 🔥 CALCULAR RETIROS PENDIENTES
-    const { data: pendingRets } = await supabase
-      .from("retiros")
-      .select("monto")
-      .eq("user_id", user.id)
-      .eq("estado", "pendiente");
-
-    const totalPending = pendingRets?.reduce((acc, r) => acc + parseFloat(r.monto || 0), 0) || 0;
-    setPendingWithdrawal(totalPending);
-
-    // 🔥 CALCULAR DESGLOSE DE COMISIONES
-    const { data: coms } = await supabase
-      .from("comisiones")
-      .select("monto, nivel")
-      .eq("user_id", user.id);
-
-    const propia = coms?.filter(c => c.nivel === 0).reduce((acc, c) => acc + parseFloat(c.monto || 0), 0) || 0;
-    const red = coms?.filter(c => c.nivel > 0).reduce((acc, c) => acc + parseFloat(c.monto || 0), 0) || 0;
-
-    setGananciaPropia(propia);
-    setGananciaRed(red);
   }
 
   function estaActivo(usuario) {
@@ -201,7 +233,7 @@ export default function Dashboard() {
         {/* STATS */}
         <div style={styles.stats}>
           <div>
-            Saldo a Retirar: <strong style={{ color: '#16a34a', fontSize: '18px' }}>S/ {Number(userData.saldo || 0).toFixed(2)}</strong>
+            Saldo a Retirar: <strong style={{ color: '#16a34a', fontSize: '18px' }}>S/ {saldoARetirar.toFixed(2)}</strong>
             <div style={{ fontSize: '10px', color: '#666', marginTop: '5px' }}>
               (Propias: S/ {gananciaPropia.toFixed(2)} + Red: S/ {gananciaRed.toFixed(2)})
             </div>

@@ -10,6 +10,8 @@ function getSupabase() {
 export async function GET(req) {
   try {
     const supabase = getSupabase()
+    const supabaseAdmin = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY)
+
     const authHeader = req.headers.get('Authorization')
     const token = authHeader?.split(' ')[1]
 
@@ -19,8 +21,8 @@ export async function GET(req) {
     if (authError || !user) return Response.json({ error: 'No autorizado' }, { status: 401 })
 
     // Verificar Rol Admin
-    const { data: userDB } = await supabase.from('users').select('role').eq('supabase_id', user.id).single()
-    if (userDB?.role !== 'admin') return Response.json({ error: 'Prohibido: Se requiere rol de administrador' }, { status: 403 })
+    const { data: userDB } = await supabaseAdmin.from('users').select('role').eq('supabase_id', user.id).single()
+    if (userDB?.role?.toLowerCase() !== 'admin') return Response.json({ error: 'Prohibido: Se requiere rol de administrador' }, { status: 403 })
 
     // 🔍 Buscamos los retiros con los datos del usuario. 
     // Si la tabla sigue vacía, asegúrate de que la relación en la DB se llame 'user_id'
@@ -52,6 +54,8 @@ export async function GET(req) {
 export async function PUT(req) {
   try {
     const supabase = getSupabase()
+    const supabaseAdmin = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY)
+
     const authHeader = req.headers.get('Authorization')
     const token = authHeader?.split(' ')[1]
 
@@ -60,8 +64,8 @@ export async function PUT(req) {
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     if (authError || !user) return Response.json({ error: 'No autorizado' }, { status: 401 })
 
-    const { data: adminCheck } = await supabase.from('users').select('role').eq('supabase_id', user.id).single()
-    if (adminCheck?.role !== 'admin') return Response.json({ error: 'Acceso denegado' }, { status: 403 })
+    const { data: adminCheck } = await supabaseAdmin.from('users').select('role').eq('supabase_id', user.id).single()
+    if (adminCheck?.role?.toLowerCase() !== 'admin') return Response.json({ error: 'Acceso denegado' }, { status: 403 })
 
     const { retiro_id, estado, comprobante_url, motivo_rechazo } = await req.json()
 
@@ -84,11 +88,11 @@ export async function PUT(req) {
     
     // 3. 🔥 LÓGICA DE SALDO: Restar automáticamente SOLO cuando se marca como PAGADO por primera vez
     if (estado === 'pagado' && retPrevio.estado !== 'pagado') {
-      const { data: u } = await supabase.from('users').select('saldo').eq('supabase_id', retPrevio.user_id).single()
+      const { data: u } = await supabaseAdmin.from('users').select('saldo').eq('supabase_id', retPrevio.user_id).single()
       if (u) {
         const saldoActual = parseFloat(u.saldo || 0)
         const nuevoSaldo = (saldoActual - parseFloat(retPrevio.monto)).toFixed(2)
-        await supabase.from('users').update({ saldo: nuevoSaldo }).eq('supabase_id', retPrevio.user_id)
+        await supabaseAdmin.from('users').update({ saldo: nuevoSaldo }).eq('supabase_id', retPrevio.user_id)
       }
     }
 
