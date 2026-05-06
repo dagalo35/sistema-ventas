@@ -21,9 +21,14 @@ export default function AdminProductos() {
   }, [])
 
   async function fetchProductos() {
-    const res = await fetch('/api/productos')
-    const data = await res.json()
-    if (!data.error) setProductos(data)
+    try {
+      const res = await fetch('/api/productos')
+      const data = await res.json()
+      if (!data.error) setProductos(data)
+      else console.error(data.error)
+    } catch (error) {
+      toast.error("Error de conexión al cargar productos")
+    }
   }
 
   async function handleAdd(e) {
@@ -31,13 +36,19 @@ export default function AdminProductos() {
     setLoading(true)
     const { data: { session } } = await supabase.auth.getSession()
 
+    const precioNum = parseFloat(precio)
+    if (isNaN(precioNum) || precioNum <= 0) {
+      setLoading(false)
+      return toast.error("El precio debe ser un número mayor a 0")
+    }
+
     const res = await fetch('/api/productos', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.access_token}`
       },
-      body: JSON.stringify({ nombre, precio, imagen })
+      body: JSON.stringify({ nombre, precio: precioNum, imagen })
     })
 
     if (res.ok) {

@@ -25,13 +25,15 @@ export default function Dashboard() {
 
   async function getUser() {
     try {
-      const { data: authData, error: authError } = await supabase.auth.getUser();
-      const user = authData?.user;
+      // Usamos getSession para evitar errores de bloqueo (lock stolen) por llamadas concurrentes
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
 
-      if (authError || !user) {
+      if (authError || !session?.user) {
         router.push("/login");
         return;
       }
+
+      const user = session.user;
 
       // 🔥 1. Traer datos base del usuario
       const { data: userInfo, error: userError } = await supabase
@@ -87,24 +89,36 @@ export default function Dashboard() {
         );
         setPendingWithdrawal(totalPending);
 
-        const totalRetiradoMes = rets.filter(r => new Date(r.created_at) >= inicioMes).reduce((acc, r) => acc + parseFloat(r.monto || 0), 0);
+        const totalRetiradoHistorico = rets
+          .filter(r => r.estado !== 'rechazado')
+          .reduce((acc, r) => acc + parseFloat(r.monto || 0), 0);
 
         // Procesar Comisiones
         if (resComisiones.error) console.warn("Error comisiones:", resComisiones.error.message);
         const coms = resComisiones.data || [];
-        const propia = coms
+
+        // 1. Totales históricos para Saldo a Retirar (Suma de Bono Propio + Red)
+        const propiaTotal = coms
           .filter(c => c.nivel === 0)
           .reduce((acc, c) => acc + parseFloat(c.monto || 0), 0);
-        const red = coms
+        const redTotal = coms
           .filter(c => c.nivel > 0)
           .reduce((acc, c) => acc + parseFloat(c.monto || 0), 0);
 
-        setGananciaPropia(propia);
-        setGananciaRed(red);
+        // 2. Filtrado por mes para Generado este mes
+        const comsMes = coms.filter(c => new Date(c.created_at) >= inicioMes);
+        const propiaMes = comsMes
+          .filter(c => c.nivel === 0)
+          .reduce((acc, c) => acc + parseFloat(c.monto || 0), 0);
+        const redMes = comsMes
+          .filter(c => c.nivel > 0)
+          .reduce((acc, c) => acc + parseFloat(c.monto || 0), 0);
 
-        // 🔥 CALCULO SALDO DINÁMICO (Igual que en Comisiones)
-        const totalMes = coms.filter(c => new Date(c.created_at) >= inicioMes).reduce((acc, c) => acc + parseFloat(c.monto || 0), 0);
-        setSaldoARetirar(totalMes - totalRetiradoMes);
+        setGananciaPropia(propiaMes);
+        setGananciaRed(redMes);
+
+        // 🔥 SALDO A RETIRAR: Histórico completo menos retiros realizados
+        setSaldoARetirar((propiaTotal + redTotal) - totalRetiradoHistorico);
 
       } catch (statsErr) {
         console.error("Error cargando estadísticas secundarias:", statsErr.message);
@@ -124,9 +138,8 @@ export default function Dashboard() {
     const hoy = new Date();
     const ultimo = new Date(usuario.ultimo_pago);
 
-    const diff = (hoy - ultimo) / (1000 * 60 * 60 * 24);
-
-    return diff <= 30;
+    // Ajuste a mes calendario: Activo solo si la última compra calificada fue en el mes/año actual
+    return hoy.getMonth() === ultimo.getMonth() && hoy.getFullYear() === ultimo.getFullYear();
   }
 
   async function logout() {
@@ -234,8 +247,10 @@ export default function Dashboard() {
         <div style={styles.stats}>
           <div>
             Saldo a Retirar: <strong style={{ color: '#16a34a', fontSize: '18px' }}>S/ {saldoARetirar.toFixed(2)}</strong>
-            <div style={{ fontSize: '10px', color: '#666', marginTop: '5px' }}>
-              (Propias: S/ {gananciaPropia.toFixed(2)} + Red: S/ {gananciaRed.toFixed(2)})
+            <div style={{ fontSize: '11px', color: '#666', marginTop: '5px' }}>
+              Generado este mes: <strong>S/ {(gananciaPropia + gananciaRed).toFixed(2)}</strong>
+              <br />
+              <span style={{ fontSize: '10px' }}>(Propio: S/ {gananciaPropia.toFixed(2)} + Red: S/ {gananciaRed.toFixed(2)})</span>
             </div>
           </div>
 

@@ -21,16 +21,15 @@ export default function Red() {
   }, [])
 
   const loadTree = async () => {
-    const { data: authData, error: authError } = await supabase.auth.getUser()
-    const user = authData?.user
+    // 🔹 Usamos getSession para evitar colisiones de tokens (Lock Error)
+    const { data: { session }, error: authError } = await supabase.auth.getSession()
 
-    if (authError || !user) {
+    if (authError || !session?.user) {
       router.push("/login")
       return
     }
+    const user = session.user
 
-    // 🔹 Obtener datos de la red mediante la API interna (usa service_role para saltar RLS)
-    const { data: { session } } = await supabase.auth.getSession()
     const res = await fetch('/api/red', {
       headers: {
         'Authorization': `Bearer ${session?.access_token}`
@@ -59,15 +58,31 @@ export default function Red() {
       }
     });
 
+    // 🔥 Función para determinar si un usuario está activo (Verde) o Inactivo (Gris)
+    const estaActivo = (u) => {
+      // El admin y la red global siempre son verdes
+      if (u?.role === "admin") return true;
+      if (!u?.activo_comisiones || !u?.ultimo_pago) return false;
+
+      const hoy = new Date();
+      const ultimo = new Date(u.ultimo_pago);
+
+      // Activo si su compra calificada pertenece al mes calendario actual
+      return hoy.getMonth() === ultimo.getMonth() && hoy.getFullYear() === ultimo.getFullYear();
+    };
+
     const buildTreeByUUID = (userId) => {
       const user = userMap.get(userId);
       if (!user) return null;
+
+      const activo = estaActivo(user);
 
       return {
         name: (user.nombre || "SIN NOMBRE").toUpperCase(),
         attributes: {
           fecha: user.created_at ? new Date(user.created_at).toLocaleDateString() : "",
-          codigo: user.codigo || ""
+          codigo: user.codigo || "",
+          activo // Pasamos el estado al nodo
         },
         children: (childrenMap.get(userId) || [])
           .map(child => buildTreeByUUID(child.supabase_id))
@@ -80,7 +95,7 @@ export default function Red() {
 
       const fullTree = {
         name: "RED GLOBAL",
-        attributes: {},
+        attributes: { activo: true },
         children: roots.map(root => buildTreeByUUID(root.supabase_id))
       };
 
@@ -115,20 +130,24 @@ export default function Red() {
 }
 
 /* 🔥 NODO PRO */
-const renderNode = ({ nodeDatum, toggleNode }) => (
-  <g>
-    <foreignObject x="-80" y="-40" width="160" height="100">
-      <div style={styles.card} onClick={toggleNode}>
-        
-        <div style={styles.avatar}></div>
+const renderNode = ({ nodeDatum, toggleNode }) => {
+  const isActive = nodeDatum.attributes?.activo !== false;
+  const statusColor = isActive ? "#16a34a" : "#94a3b8"; // Verde vs Gris
 
-        <div style={styles.name}>
-          {nodeDatum.name}
-        </div>
+  return (
+    <g>
+      <foreignObject x="-80" y="-40" width="160" height="100">
+        <div style={styles.card} onClick={toggleNode}>
+          
+          <div style={{ ...styles.avatar, background: isActive ? "#22c55e" : "#94a3b8" }}></div>
 
-        <div style={styles.code}>
-          {nodeDatum.attributes?.codigo}
-        </div>
+          <div style={styles.name}>
+            {nodeDatum.name}
+          </div>
+
+          <div style={{ ...styles.code, color: statusColor }}>
+            {nodeDatum.attributes?.codigo}
+          </div>
 
         <div style={styles.date}>
           {nodeDatum.attributes?.fecha}
@@ -137,7 +156,8 @@ const renderNode = ({ nodeDatum, toggleNode }) => (
       </div>
     </foreignObject>
   </g>
-)
+  )
+}
 
 /* 🎨 ESTILOS */
 const styles = {

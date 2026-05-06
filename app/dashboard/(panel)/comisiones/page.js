@@ -80,16 +80,17 @@ export default function ComisionesPage() {
   async function solicitarRetiro() {
     const monto = parseFloat(montoRetiro)
     
-    // 🔥 CÁLCULO DE SALDO DISPONIBLE DEL MES (Igual que en el render)
-    const now = new Date()
-    const inicioMes = new Date(now.getFullYear(), now.getMonth(), 1)
-    const totalMes = comisiones?.filter(c => new Date(c.created_at) >= inicioMes).reduce((a, b) => a + parseFloat(b.monto || 0), 0) || 0
-    const totalRetiradoMes = retiros?.filter(r => new Date(r.created_at) >= inicioMes).reduce((a, b) => a + parseFloat(b.monto || 0), 0) || 0
-    
-    const saldoDisponibleMes = totalMes - totalRetiradoMes
+    // 🔥 CÁLCULO DE SALDO DISPONIBLE HISTÓRICO
+    const totalGanadoHistorico = comisiones?.reduce((a, b) => a + parseFloat(b.monto || 0), 0) || 0
+    // Restamos todos los retiros que no hayan sido rechazados
+    const totalRetiradoHistorico = retiros
+      ?.filter(r => r.estado !== 'rechazado')
+      .reduce((a, b) => a + parseFloat(b.monto || 0), 0) || 0
+
+    const saldoDisponibleTotal = totalGanadoHistorico - totalRetiradoHistorico
 
     if (isNaN(monto) || monto <= 0) return toast.error("Monto inválido")
-    if (monto > saldoDisponibleMes) return toast.error("Saldo insuficiente para este mes")
+    if (monto > saldoDisponibleTotal) return toast.error("Saldo insuficiente")
     if (monto < 50) return toast.error("El mínimo es S/ 50.00")
     if (!banco || !numeroCuenta || !titular) return toast.warning("Completa los datos bancarios")
 
@@ -127,14 +128,19 @@ export default function ComisionesPage() {
   const inicioMes = new Date(now.getFullYear(), now.getMonth(), 1)
   const totalMes = comisiones?.filter(c => new Date(c.created_at) >= inicioMes).reduce((a, b) => a + parseFloat(b.monto || 0), 0) || 0
   
-  // 🔥 Retiros totales del mes (independiente de si están pendientes o completados)
-  const totalRetiradoMes = retiros?.filter(r => new Date(r.created_at) >= inicioMes).reduce((a, b) => a + parseFloat(b.monto || 0), 0) || 0
-  
-  // 🔥 SALDO DISPONIBLE: Lo que se ganó este mes menos lo que ya se pidió retirar este mes
-  const saldoDinamico = totalMes - totalRetiradoMes
+  const totalPropia = comisiones?.filter(c => c.nivel === 0 && new Date(c.created_at) >= inicioMes).reduce((a, b) => a + parseFloat(b.monto || 0), 0) || 0
+  const totalRed = comisiones?.filter(c => c.nivel > 0 && new Date(c.created_at) >= inicioMes).reduce((a, b) => a + parseFloat(b.monto || 0), 0) || 0
 
-  const totalPropia = comisiones?.filter(c => c.nivel === 0).reduce((a, b) => a + parseFloat(b.monto || 0), 0) || 0
-  const totalRed = comisiones?.filter(c => c.nivel > 0).reduce((a, b) => a + parseFloat(b.monto || 0), 0) || 0
+  // Suma total de todas las comisiones históricas para el saldo disponible
+  const totalGanadoHistorico = comisiones?.reduce((a, b) => a + parseFloat(b.monto || 0), 0) || 0
+
+  // 🔥 SALDO A RETIRAR COMPLETO: Suma histórica total menos retiros realizados (no rechazados)
+  const totalRetiradoHistorico = retiros
+    ?.filter(r => r.estado !== 'rechazado')
+    .reduce((a, b) => a + parseFloat(b.monto || 0), 0) || 0
+  
+  const saldoDinamico = totalGanadoHistorico - totalRetiradoHistorico
+
   const enProceso = retiros.filter(r => r.estado === 'pendiente').reduce((a, b) => a + parseFloat(b.monto || 0), 0)
 
   const filteredComs = comisiones?.filter((c, index) => {
@@ -272,7 +278,7 @@ export default function ComisionesPage() {
               <span>Pago</span>
             </div>
             {retiros.map(r => (
-            <div key={r.id} style={styles.tableRow}>
+            <div key={r.id} style={{ ...styles.tableRow, gridTemplateColumns: '1fr 1fr 1fr 1fr' }}>
                 <span>{new Date(r.created_at).toLocaleDateString()}</span>
                 <strong>S/ {parseFloat(r.monto).toFixed(2)}</strong>
                 <span style={{ ...styles.pill, background: r.estado === 'pendiente' ? '#fef3c7' : '#dcfce7', color: r.estado === 'pendiente' ? '#92400e' : '#166534' }}>
@@ -299,12 +305,22 @@ export default function ComisionesPage() {
               <input value={banco} onChange={e => setBanco(e.target.value)} style={styles.headerInput} placeholder="Ej: BCP, Yape..." />
             </div>
             <div style={{ marginBottom: 15 }}>
-              <label style={styles.label}>N° Cuenta / Celular</label>
-              <input value={numeroCuenta} onChange={e => setNumeroCuenta(e.target.value)} style={styles.headerInput} />
+              <label style={styles.label}>N° cuenta/Celular</label>
+              <input value={numeroCuenta} onChange={e => setNumeroCuenta(e.target.value)} style={styles.headerInput} placeholder="Ingrese número" />
             </div>
             <div style={{ marginBottom: 15 }}>
               <label style={styles.label}>Titular</label>
               <input value={titular} onChange={e => setTitular(e.target.value)} style={styles.headerInput} />
+            </div>
+            <div style={{ marginBottom: 15 }}>
+              <label style={styles.label}>CCI (Interbancario)</label>
+              <input 
+                value={cci} 
+                onChange={e => setCci(e.target.value.replace(/\D/g, ''))} 
+                style={styles.headerInput} 
+                placeholder="20 dígitos (solo números)" 
+                maxLength={20} 
+              />
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={solicitarRetiro} disabled={loadingRetiro} style={styles.btnConfirm}>Enviar</button>

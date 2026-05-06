@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { createClient } from "@supabase/supabase-js"
+import { createPortal } from "react-dom"
 import { toast, Toaster } from "sonner"
 
 const supabase = createClient(
@@ -28,7 +29,9 @@ export default function Pedidos() {
   const [openMenuId, setOpenMenuId] = useState(null)
 
   const [modalOpen, setModalOpen] = useState(false)
-  const [tipoEntrega, setTipoEntrega] = useState("recojo_oficina")
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, openUp: false })
+  const [mounted, setMounted] = useState(false)
+  const [tipoEntrega, setTipoEntrega] = useState("recojo_almacen")
   const [file, setFile] = useState(null)
   const [pagoFisico, setPagoFisico] = useState(false)
   const [preview, setPreview] = useState(null)
@@ -36,6 +39,7 @@ export default function Pedidos() {
   const [viewImg, setViewImg] = useState(null)
 
   useEffect(() => {
+    setMounted(true)
     checkRole()
     getPedidos()
 
@@ -50,13 +54,14 @@ export default function Pedidos() {
   }, [carrito])
 
   async function checkRole() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    // Evitamos getUser() para prevenir conflictos de bloqueo de tokens en el navegador
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.user) return
 
     const { data: userDB } = await supabase
       .from('users')
       .select('role')
-      .eq('supabase_id', user.id)
+      .eq('supabase_id', session.user.id)
       .single()
     setRole(userDB?.role)
   }
@@ -387,10 +392,8 @@ export default function Pedidos() {
                 value={tipoEntrega}
                 onChange={(e) => setTipoEntrega(e.target.value)}
               >
-                <option value="recojo_oficina">Recojo en Oficina</option>
-                <option value="recojo_tienda">Recojo en Tienda</option>
                 <option value="recojo_almacen">Recojo en Almacén</option>
-                <option value="delivery">Envío a domicilio</option>
+                <option value="delivery" disabled>Envío a domicilio (Próximamente)</option>
               </select>
             </div>
 
@@ -575,33 +578,44 @@ export default function Pedidos() {
                         {p.estado.replace('_', ' ').toUpperCase()} <span style={{ fontSize: 9 }}>▼</span>
                       </button>
 
-                      {openMenuId === p.id && (
-                        <div style={styles.statusMenu} onClick={e => e.stopPropagation()}>
-                          {[
-                            { val: 'enviado', label: '⏳ Enviado', color: '#f59e0b' },
-                            { val: 'pendiente_pago', label: '💳 Pendiente Pago', color: '#f59e0b' },
-                            { val: 'aprobado', label: '✅ Aprobar', color: '#16a34a' },
-                            { val: 'rechazado', label: '❌ Rechazar', color: '#991b1b' },
-                            { val: 'listo_recojo', label: '📦 Listo Recojo', color: '#2563eb' },
-                            { val: 'cancelado', label: '🚫 Cancelar', color: '#dc2626' }
-                          ].map(opt => (
-                            <div
-                              key={opt.val}
-                              style={{
-                                ...styles.statusOption,
-                                borderLeft: p.estado === opt.val ? `4px solid ${opt.color}` : '4px solid transparent',
-                                background: p.estado === opt.val ? '#f9fafb' : 'white',
-                                fontWeight: p.estado === opt.val ? 'bold' : 'normal'
-                              }}
-                              onClick={() => {
-                                actualizarEstado(p.id, opt.val)
-                                setOpenMenuId(null)
-                              }}
-                            >
-                              {opt.label}
-                            </div>
-                          ))}
-                        </div>
+                      {openMenuId === p.id && mounted && createPortal(
+                        <div 
+                          className="dropdown-appear"
+                          style={{ 
+                            ...styles.statusMenu, 
+                            top: menuPos.top, 
+                            left: menuPos.left,
+                            transform: menuPos.openUp ? 'translateY(-100%)' : 'none'
+                          }} 
+                          onClick={e => e.stopPropagation()}
+                        >
+                            {[
+                              { val: 'enviado', label: '⏳ Enviado', color: '#f59e0b' },
+                              { val: 'pendiente_pago', label: '💳 Pendiente Pago', color: '#f59e0b' },
+                              { val: 'aprobado', label: '✅ Aprobar', color: '#16a34a' },
+                              { val: 'rechazado', label: '❌ Rechazar', color: '#991b1b' },
+                              { val: 'listo_recojo', label: '📦 Listo Recojo', color: '#2563eb' },
+                              { val: 'cancelado', label: '🚫 Cancelar', color: '#dc2626' }
+                            ].map(opt => (
+                              <div
+                                key={opt.val}
+                                className="hover-option"
+                                style={{
+                                  ...styles.statusOption,
+                                  borderLeft: p.estado === opt.val ? `4px solid ${opt.color}` : '4px solid transparent',
+                                  background: p.estado === opt.val ? '#f9fafb' : 'transparent',
+                                  fontWeight: p.estado === opt.val ? 'bold' : 'normal'
+                                }}
+                                onClick={() => {
+                                  actualizarEstado(p.id, opt.val)
+                                  setOpenMenuId(null)
+                                }}
+                              >
+                                {opt.label}
+                              </div>
+                            ))}
+                        </div>,
+                        document.body
                       )}
                     </div>
                   ) : (
@@ -643,6 +657,31 @@ export default function Pedidos() {
         </div>
       )}
 
+      <style jsx global>{`
+        @keyframes dropdownScale {
+          from { opacity: 0; transform: scale(0.95) translateY(-10px); }
+          to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        
+        @keyframes dropdownScaleUp {
+          from { opacity: 0; transform: scale(0.95) translateY(10px) translateY(-100%); }
+          to { opacity: 1; transform: scale(1) translateY(0) translateY(-100%); }
+        }
+
+        .dropdown-appear {
+          animation: ${menuPos.openUp ? 'dropdownScaleUp' : 'dropdownScale'} 0.2s ease-out forwards;
+          transform-origin: ${menuPos.openUp ? 'bottom left' : 'top left'};
+        }
+
+        .hover-option:hover {
+          background-color: #f8fafc !important;
+          color: #1e293b !important;
+        }
+
+        .hover-option:active {
+          transform: scale(0.98);
+        }
+      `}</style>
     </div>
   )
 }
@@ -831,29 +870,30 @@ const styles = {
   },
 
   statusMenu: {
-    position: "absolute",
-    top: "100%",
-    left: 0,
+    position: "fixed",
     background: "white",
-    boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
-    borderRadius: "10px",
-    zIndex: 100,
-    marginTop: "8px",
-    width: "170px",
+    boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1), 0 25px 50px -12px rgba(0,0,0,0.25)",
+    borderRadius: "16px",
+    zIndex: 9999,
+    width: "220px",
     overflow: "hidden",
-    border: "1px solid #e5e7eb",
-    padding: "5px 0"
+    border: "1px solid #f1f5f9",
+    padding: "8px",
+    backdropFilter: "blur(8px)",
+    backgroundColor: "rgba(255, 255, 255, 0.98)"
   },
 
   statusOption: {
-    padding: "10px 15px",
-    fontSize: "13px",
+    padding: "10px 14px",
+    margin: "2px 0",
+    fontSize: "14px",
     cursor: "pointer",
     textAlign: "left",
-    color: "#374151",
+    color: "#475569",
     display: "block",
     width: "100%",
-    transition: "background 0.2s"
+    transition: "all 0.15s ease",
+    borderRadius: "10px"
   },
 
   header: {

@@ -26,7 +26,7 @@ export async function GET(req) {
 
     // 🔍 Buscamos los retiros con los datos del usuario. 
     // Si la tabla sigue vacía, asegúrate de que la relación en la DB se llame 'user_id'
-    const { data: retiros, error } = await supabase
+    const { data: retiros, error } = await supabaseAdmin
       .from('retiros')
       .select(`
         *,
@@ -72,7 +72,7 @@ export async function PUT(req) {
     if (!retiro_id || !estado) return Response.json({ error: 'Datos incompletos' }, { status: 400 })
 
     // 1. Obtener datos del retiro antes de actualizar para comparar estados
-    const { data: retPrevio } = await supabase.from('retiros').select('estado, user_id, monto').eq('id', retiro_id).single()
+    const { data: retPrevio } = await supabaseAdmin.from('retiros').select('estado, user_id, monto').eq('id', retiro_id).single()
     if (!retPrevio) return Response.json({ error: 'Retiro no encontrado' }, { status: 404 })
 
     // 2. Actualizar el estado del retiro
@@ -83,7 +83,7 @@ export async function PUT(req) {
       fecha_pago: estado === 'pagado' ? new Date().toISOString() : null
     }
 
-    const { error } = await supabase.from('retiros').update(updateData).eq('id', retiro_id)
+    const { error } = await supabaseAdmin.from('retiros').update(updateData).eq('id', retiro_id)
     if (error) throw error
     
     // 3. 🔥 LÓGICA DE SALDO: Restar automáticamente SOLO cuando se marca como PAGADO por primera vez

@@ -162,8 +162,10 @@ export async function PUT(req) {
           ...(comprasMesComprador?.flatMap(p => p.productos) || [])
         ]
 
-        // Para pruebas: califica si tiene al menos un producto
-        const calificaNivel0 = productosMesTotal.length > 0;
+        // Califica si tiene al menos uno de cada producto requerido en el mes
+        const tieneMagvit = productosMesTotal.some(p => p === 'MAGVIT17');
+        const tieneCollagem = productosMesTotal.some(p => p === 'COLLAGEM');
+        const calificaNivel0 = tieneMagvit && tieneCollagem;
 
         if (calificaNivel0) {
           comisionesAInsertar.push({
@@ -208,8 +210,11 @@ export async function PUT(req) {
               .gte('created_at', inicioMes)
 
             const prodsSponsor = comprasSponsor?.flatMap(p => p.productos) || [];
-            // Igualamos la regla: califica si tiene al menos una compra aprobada este mes
-            if (prodsSponsor.length > 0) calificado = true;
+            
+            // El patrocinador debe estar activo con ambos productos para cobrar red
+            const sMagvit = prodsSponsor.some(p => p === 'MAGVIT17');
+            const sCollagem = prodsSponsor.some(p => p === 'COLLAGEM');
+            if (sMagvit && sCollagem) calificado = true;
           }
 
           if (calificado) {

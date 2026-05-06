@@ -24,7 +24,7 @@ export async function GET(req) {
     // Como no hay RLS, filtramos en el código o traemos la estructura base
     const { data: members, error: dbError } = await supabaseAdmin
       .from('users')
-      .select('nombre, apellidos, codigo, referido_por_uuid, supabase_id, activo, role, created_at')
+      .select('nombre, apellidos, codigo, referido_por_uuid, supabase_id, activo, role, created_at, activo_comisiones, ultimo_pago')
       .order('created_at', { ascending: true })
 
     if (dbError) {

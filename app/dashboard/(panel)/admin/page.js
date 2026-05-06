@@ -260,9 +260,14 @@ export default function AdminDashboard() {
       <main style={styles.main}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, gap: 10 }}>
           <h1 style={{ margin: 0 }}>👑 Dashboard Administrador</h1>
-          <button onClick={sincronizarSaldos} style={styles.btnSync}>
-            🔄 Sincronizar Saldos
-          </button>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={() => router.push("/dashboard/admin/productos")} style={{ ...styles.btnSync, background: '#10b981' }}>
+              📦 Gestión de Productos
+            </button>
+            <button onClick={sincronizarSaldos} style={styles.btnSync}>
+              🔄 Sincronizar Saldos
+            </button>
+          </div>
         </div>
 
         <div style={styles.grid}>
