@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-export async function middleware(req) {
+export async function proxy(req) {
   const { pathname } = req.nextUrl
 
   // 1. Rutas excluidas (Página de mantenimiento, recursos estáticos y Auth)
@@ -62,7 +62,7 @@ export async function middleware(req) {
         }
       }
     } catch (e) {
-      console.error("Error verificando admin en middleware:", e);
+      console.error("Error verificando admin en proxy:", e);
     }
 
     return NextResponse.redirect(new URL('/mantenimiento', req.url))
