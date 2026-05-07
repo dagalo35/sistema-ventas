@@ -70,3 +70,14 @@ export async function middleware(req) {
 
   return NextResponse.next()
 }
+
+export const config = {
+  matcher: [
+    /*
+     * Coincide con todas las rutas excepto:
+     * - api/auth (rutas de autenticación)
+     * - _next/static, _next/image, favicon.ico (archivos estáticos)
+     */
+    '/((?!api/auth|_next/static|_next/image|favicon.ico).*)',
+  ],
+}
